@@ -30,4 +30,4 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Abra `http://SEU_IP`.
+Abra `http://SEU_IP:38473`.
