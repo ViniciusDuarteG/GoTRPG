@@ -521,7 +521,7 @@ function App() {
       <header className="topbar">
         <button className="brand" onClick={() => go('/')}>
           <Sword size={24} />
-          GoTRPG
+          LeV RPG
         </button>
         <nav>
           {authed && <button onClick={() => go('/profile')}><User size={17} />Perfil</button>}
@@ -540,7 +540,7 @@ function Landing({ go, authed }) {
     <main className="hero">
       <section className="heroText">
         <p className="kicker">Fichas digitais de RPG medieval</p>
-        <h1>Forje personagens, casas e lendas.</h1>
+        <h1>LeV RPG</h1>
         <p>Um grimorio simples para criar, salvar e evoluir fichas inspiradas em campanhas de intriga, guerra e honra.</p>
         <div className="actions">
           <button className="primary" onClick={() => go(authed ? '/dashboard' : '/auth')}>

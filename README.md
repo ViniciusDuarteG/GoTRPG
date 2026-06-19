@@ -1,4 +1,4 @@
-# GoTRPG
+# LeV RPG
 
 Sistema de fichas de RPG com frontend React e backend Python.
 
