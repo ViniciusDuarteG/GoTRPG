@@ -16,7 +16,7 @@ body {
   min-height: 100vh;
   background:
     linear-gradient(rgba(18, 11, 8, .74), rgba(18, 11, 8, .9)),
-    url('/capa-front.png') center top / cover fixed;
+    url('/capa-front.webp') center top / cover fixed;
 }
 
 button, input, textarea, select {
