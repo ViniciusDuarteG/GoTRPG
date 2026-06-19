@@ -1,17 +1,17 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 8003
       GOTRPG_SECRET_KEY: '${GOTRPG_SECRET_KEY:-}'
       ALLOWED_ORIGIN: '${ALLOWED_ORIGIN:-*}'
       DATA_DIR: /data
-      CHARACTER_IMAGES_DIR: /imgs/personagens
+      CHARACTER_IMAGES_DIR: /app/imgs/personagens
     volumes:
       - gotrpg_data:/data
-      - ./imgs:/imgs:ro
     expose:
       - "8003"
 

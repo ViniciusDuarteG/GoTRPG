@@ -4,12 +4,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8003
 ENV DATA_DIR=/data
+ENV CHARACTER_IMAGES_DIR=/app/imgs/personagens
 
 WORKDIR /app
 
-COPY main.py /app/main.py
+COPY backend/main.py /app/main.py
+COPY imgs/personagens /app/imgs/personagens
 
-RUN mkdir -p /data
+RUN mkdir -p /data /app/imgs/personagens
 
 EXPOSE 8003
 
