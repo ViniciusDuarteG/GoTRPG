@@ -311,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
-    port = int(os.environ.get("PORT", "8001"))
+    port = int(os.environ.get("PORT", "8003"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Backend em http://0.0.0.0:{port}")
     server.serve_forever()

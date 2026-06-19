@@ -19,6 +19,8 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8003
+    ports:
+      - "38473:38473"
     expose:
       - "38473"
     depends_on:
