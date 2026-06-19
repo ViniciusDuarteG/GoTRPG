@@ -6,6 +6,7 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -183,6 +184,27 @@ Casa Cole
 )
 
 
+def parse_weight(value: object) -> float:
+    match = re.search(r"\d+(?:[,.]\d+)?", str(value or ""))
+    return float(match.group(0).replace(",", ".")) if match else 0.0
+
+
+def item_quantity(value: object) -> int:
+    try:
+        quantity = int(float(value or 1))
+    except (TypeError, ValueError):
+        quantity = 1
+    return max(1, quantity)
+
+
+def items_weight(items: list[dict], with_quantity: bool = False) -> float:
+    total = 0.0
+    for item in items:
+        quantity = item_quantity(item.get("quantidade")) if with_quantity else 1
+        total += parse_weight(item.get("weight")) * quantity
+    return total
+
+
 def clean_character_data(data: object) -> dict | None:
     if not isinstance(data, dict):
         return None
@@ -248,9 +270,23 @@ def clean_character_data(data: object) -> dict | None:
     cleaned["movimento"] = str(movement)
     cleaned["corrida"] = str(movement * 3)
     inventory = cleaned.get("inventario", [])
-    cleaned["inventario"] = inventory if isinstance(inventory, list) else []
+    if not isinstance(inventory, list):
+        inventory = []
+    cleaned_inventory = []
+    for item in inventory:
+        if not isinstance(item, dict):
+            continue
+        clean_item = dict(item)
+        clean_item["quantidade"] = item_quantity(clean_item.get("quantidade"))
+        cleaned_inventory.append(clean_item)
+    cleaned["inventario"] = cleaned_inventory
     weapons = cleaned.get("armasAtaques", [])
-    cleaned["armasAtaques"] = weapons if isinstance(weapons, list) else []
+    if not isinstance(weapons, list):
+        weapons = []
+    cleaned_weapons = [dict(weapon) for weapon in weapons if isinstance(weapon, dict)]
+    cleaned["armasAtaques"] = cleaned_weapons
+    if items_weight(cleaned_inventory, True) + items_weight(cleaned_weapons) > grade("Atletismo") * 25:
+        return None
     return cleaned
 
 
@@ -586,7 +622,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessário"})
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
-            return self.send_json(400, {"detail": "Casa ou armadura invalida"})
+            return self.send_json(400, {"detail": "Dados inválidos ou peso excedido"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         now = int(time.time())
         with db() as conn:
@@ -633,7 +669,7 @@ class Handler(BaseHTTPRequestHandler):
         character_id = path.rsplit("/", 1)[-1]
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
-            return self.send_json(400, {"detail": "Casa ou armadura invalida"})
+            return self.send_json(400, {"detail": "Dados inválidos ou peso excedido"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         with db() as conn:
             row = conn.execute(

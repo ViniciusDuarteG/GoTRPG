@@ -383,7 +383,7 @@ function applyArchetype(data, archetypeName) {
     habilidades: buildArchetypeSkills(archetypeName),
     armadura: template.armor || data.armadura,
     armasAtaques: template.weapons.map((name) => withCrowns(findNamedItem(weaponOptions, name))),
-    inventario: template.inventory.map((name) => withCrowns(findNamedItem(equipmentOptions, name)))
+    inventario: template.inventory.map((name) => ({ ...withCrowns(findNamedItem(equipmentOptions, name)), quantidade: 1 }))
   });
 }
 
@@ -394,6 +394,36 @@ function numberValue(value) {
 
 function skillGrade(data, skill) {
   return numberValue(data.habilidades?.[skill]?.grau);
+}
+
+function parseWeight(value) {
+  const match = String(value || '').replace(',', '.').match(/\d+(?:\.\d+)?/);
+  return match ? numberValue(match[0]) : 0;
+}
+
+function normalizeQuantity(value) {
+  const quantity = Math.floor(numberValue(value));
+  return quantity > 0 ? quantity : 1;
+}
+
+function itemWeight(item, useQuantity = false) {
+  return parseWeight(item?.weight) * (useQuantity ? normalizeQuantity(item?.quantidade ?? 1) : 1);
+}
+
+function listWeight(items, useQuantity = false) {
+  return (Array.isArray(items) ? items : []).reduce((total, item) => total + itemWeight(item, useQuantity), 0);
+}
+
+function carryLimit(data) {
+  return skillGrade(data, 'Atletismo') * 25;
+}
+
+function carriedWeight(data) {
+  return listWeight(data.inventario, true) + listWeight(data.armasAtaques, false);
+}
+
+function formatWeight(value) {
+  return String(Number(value.toFixed(2))).replace('.', ',');
 }
 
 function calculatedDefenses(data) {
@@ -669,16 +699,45 @@ function TextField({ label, value, onChange }) {
   return <label className="wide">{label}<textarea value={value || ''} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
-function ItemListField({ title, options, items, onChange, showDamage = false }) {
+function ItemListField({
+  title,
+  options,
+  items,
+  onChange,
+  showDamage = false,
+  useQuantity = false,
+  maxWeight = 0,
+  otherWeight = 0,
+  onWeightError = () => {}
+}) {
   const [selected, setSelected] = useState(options[0].name);
   const selectedItem = withCrowns(options.find((item) => item.name === selected) || options[0]);
+  const currentItems = Array.isArray(items) ? items : [];
+
+  function commit(nextItems) {
+    const nextWeight = otherWeight + listWeight(nextItems, useQuantity);
+    if (nextWeight > maxWeight) {
+      onWeightError(`Peso excede ${formatWeight(maxWeight)} kg`);
+      return;
+    }
+    onWeightError('');
+    onChange(nextItems);
+  }
 
   function addItem() {
-    onChange([...(Array.isArray(items) ? items : []), selectedItem]);
+    const nextItem = useQuantity ? { ...selectedItem, quantidade: 1 } : selectedItem;
+    commit([...currentItems, nextItem]);
   }
 
   function removeItem(index) {
-    onChange((Array.isArray(items) ? items : []).filter((_, itemIndex) => itemIndex !== index));
+    onWeightError('');
+    onChange(currentItems.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updateQuantity(index, value) {
+    commit(currentItems.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, quantidade: normalizeQuantity(value) } : item
+    )));
   }
 
   return (
@@ -695,14 +754,27 @@ function ItemListField({ title, options, items, onChange, showDamage = false }) 
         <button type="button" onClick={addItem}><Plus size={18} />Adicionar</button>
       </div>
       <div className="inventoryList">
-        {(Array.isArray(items) ? items : []).map((item, index) => (
-          <div className="inventoryItem" key={`${item.name}-${index}`}>
+        {currentItems.map((item, index) => (
+          <div className={`inventoryItem${useQuantity ? ' withQuantity' : ''}`} key={`${item.name}-${index}`}>
             <span>{item.name}</span>
-            <small>{item.weight ? `${item.weight} / ` : ''}{priceInCrowns(item.price)}{showDamage ? ` / ${item.damage}` : ''}</small>
+            {useQuantity && (
+              <input
+                className="quantityInput"
+                type="number"
+                min="1"
+                step="1"
+                value={normalizeQuantity(item.quantidade)}
+                onChange={(event) => updateQuantity(index, event.target.value)}
+              />
+            )}
+            <small>
+              {item.weight ? `${item.weight}${useQuantity ? ` x${normalizeQuantity(item.quantidade)} = ${formatWeight(itemWeight(item, true))} kg` : ''} / ` : ''}
+              {priceInCrowns(item.price)}{showDamage ? ` / ${item.damage}` : ''}
+            </small>
             <button type="button" onClick={() => removeItem(index)}><X size={16} /></button>
           </div>
         ))}
-        {(!Array.isArray(items) || items.length === 0) && <p>Nenhum item.</p>}
+        {!currentItems.length && <p>Nenhum item.</p>}
       </div>
     </div>
   );
@@ -830,6 +902,11 @@ function CharacterForm({ go, id }) {
   }, [id]);
 
   const houseValid = houseOptions.includes(data.casa);
+  const maxWeight = carryLimit(data);
+  const inventoryWeight = listWeight(data.inventario, true);
+  const weaponsWeight = listWeight(data.armasAtaques, false);
+  const totalWeight = inventoryWeight + weaponsWeight;
+  const weightExceeded = totalWeight > maxWeight;
 
   const set = (key, value) => setData((current) => withCalculatedDefenses({ ...current, [key]: value }));
   const setArmor = (name) => {
@@ -860,6 +937,10 @@ function CharacterForm({ go, id }) {
     setError('');
     if (!houseValid) {
       setError('Selecione uma casa válida');
+      return;
+    }
+    if (weightExceeded) {
+      setError(`Peso excede ${formatWeight(maxWeight)} kg`);
       return;
     }
     try {
@@ -940,8 +1021,29 @@ function CharacterForm({ go, id }) {
               Ativar escudo (+2 Defesa de Combate)
             </label>
           </div>
-          <ItemListField title="Armas e Ataques" options={weaponOptions} items={data.armasAtaques} onChange={(v) => set('armasAtaques', v)} showDamage />
-          <ItemListField title="Inventário" options={equipmentOptions} items={data.inventario} onChange={(v) => set('inventario', v)} />
+          <div className={`weightSummary${weightExceeded ? ' overLimit' : ''}`}>
+            Peso: {formatWeight(totalWeight)} / {formatWeight(maxWeight)} kg
+          </div>
+          <ItemListField
+            title="Armas e Ataques"
+            options={weaponOptions}
+            items={data.armasAtaques}
+            onChange={(v) => set('armasAtaques', v)}
+            showDamage
+            maxWeight={maxWeight}
+            otherWeight={inventoryWeight}
+            onWeightError={setError}
+          />
+          <ItemListField
+            title="Inventário"
+            options={equipmentOptions}
+            items={data.inventario}
+            onChange={(v) => set('inventario', v)}
+            useQuantity
+            maxWeight={maxWeight}
+            otherWeight={weaponsWeight}
+            onWeightError={setError}
+          />
           <h2>Aparência</h2>
           <div className="twoCols">
             <Field label="Altura" value={data.altura} onChange={(v) => set('altura', v)} />
