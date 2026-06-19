@@ -8,8 +8,10 @@ services:
       GOTRPG_SECRET_KEY: '${GOTRPG_SECRET_KEY:-}'
       ALLOWED_ORIGIN: '${ALLOWED_ORIGIN:-*}'
       DATA_DIR: /data
+      CHARACTER_IMAGES_DIR: /imgs/personagens
     volumes:
       - gotrpg_data:/data
+      - ./imgs:/imgs:ro
     expose:
       - "8003"
 
