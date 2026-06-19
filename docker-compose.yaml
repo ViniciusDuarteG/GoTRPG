@@ -20,9 +20,9 @@ services:
     environment:
       BACKEND_URL: http://backend:8003
     ports:
-      - "38473:38473"
+      - "8081:80"
     expose:
-      - "38473"
+      - "80"
     depends_on:
       - backend
 
