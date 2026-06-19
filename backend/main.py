@@ -26,17 +26,23 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 ARMOR_STATS = {
     "Roupas": {"defense": 0, "movement": 0},
     "Robes": {"defense": 0, "movement": 0},
-    "Acholchoada": {"defense": 1, "movement": -1},
+    "Acolchoada": {"defense": 1, "movement": -1},
     "Couro Macio": {"defense": 2, "movement": -1},
-    "Couro Rigo": {"defense": 3, "movement": -1},
+    "Couro Rígido": {"defense": 3, "movement": -1},
     "Madeira ou ossos": {"defense": 4, "movement": -2},
-    "Cota de aneis": {"defense": 4, "movement": -2},
+    "Cota de Anéis": {"defense": 4, "movement": -2},
     "Peles": {"defense": 5, "movement": -3},
-    "Cota de malha": {"defense": 5, "movement": -3},
+    "Cota de Malha": {"defense": 5, "movement": -3},
     "Cota de Escamas": {"defense": 6, "movement": -3},
     "Brigantina": {"defense": 8, "movement": -4},
     "Meia Armadura": {"defense": 9, "movement": -5},
     "Placas": {"defense": 10, "movement": -5},
+}
+ARMOR_ALIASES = {
+    "Acholchoada": "Acolchoada",
+    "Couro Rigo": "Couro Rígido",
+    "Cota de aneis": "Cota de Anéis",
+    "Cota de malha": "Cota de Malha",
 }
 HOUSE_OPTIONS = set(
     """
@@ -186,6 +192,7 @@ def clean_character_data(data: object) -> dict | None:
         return None
     cleaned["casa"] = house
     armor = str(cleaned.get("armadura") or "Roupas").strip()
+    armor = ARMOR_ALIASES.get(armor, armor)
     if armor not in ARMOR_STATS:
         return None
     cleaned["armadura"] = armor
@@ -437,9 +444,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.join_campaign(path)
             if path.startswith("/campaigns/") and path.endswith("/characters"):
                 return self.add_campaign_character(path)
-            self.send_json(404, {"detail": "Rota nao encontrada"})
+            self.send_json(404, {"detail": "Rota não encontrada"})
         except json.JSONDecodeError:
-            self.send_json(400, {"detail": "JSON invalido"})
+            self.send_json(400, {"detail": "JSON inválido"})
 
     def do_GET(self) -> None:
         init_db()
@@ -460,7 +467,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.get_campaign_invite(path)
         if path.startswith("/campaigns/"):
             return self.get_campaign(path)
-        self.send_json(404, {"detail": "Rota nao encontrada"})
+        self.send_json(404, {"detail": "Rota não encontrada"})
 
     def list_character_images(self) -> None:
         if not CHARACTER_IMAGES_DIR.exists():
@@ -476,7 +483,7 @@ class Handler(BaseHTTPRequestHandler):
         filename = Path(unquote(path.rsplit("/", 1)[-1])).name
         image_path = CHARACTER_IMAGES_DIR / filename
         if not image_path.is_file() or image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-            return self.send_json(404, {"detail": "Imagem nao encontrada"})
+            return self.send_json(404, {"detail": "Imagem não encontrada"})
         content = image_path.read_bytes()
         content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
         self.send_response(200)
@@ -495,9 +502,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.update_campaign_diary(path)
             if path.startswith("/campaigns/"):
                 return self.update_campaign(path)
-            self.send_json(404, {"detail": "Rota nao encontrada"})
+            self.send_json(404, {"detail": "Rota não encontrada"})
         except json.JSONDecodeError:
-            self.send_json(400, {"detail": "JSON invalido"})
+            self.send_json(400, {"detail": "JSON inválido"})
 
     def do_DELETE(self) -> None:
         init_db()
@@ -508,14 +515,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.remove_campaign_character(path)
         if path.startswith("/campaigns/"):
             return self.delete_campaign(path)
-        self.send_json(404, {"detail": "Rota nao encontrada"})
+        self.send_json(404, {"detail": "Rota não encontrada"})
 
     def register(self) -> None:
         payload = self.read_json()
         username = str(payload.get("username", "")).strip().lower()
         password = str(payload.get("password", ""))
         if len(username) < 3 or len(password) < 8:
-            return self.send_json(400, {"detail": "Usuario minimo 3 e senha minimo 8"})
+            return self.send_json(400, {"detail": "Usuário mínimo 3 e senha mínimo 8"})
         try:
             with db() as conn:
                 cursor = conn.execute(
@@ -524,7 +531,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 user_id = int(cursor.lastrowid)
         except sqlite3.IntegrityError:
-            return self.send_json(409, {"detail": "Usuario ja existe"})
+            return self.send_json(409, {"detail": "Usuário já existe"})
         self.send_json(200, {"token": create_token(user_id), "username": username})
 
     def login(self) -> None:
@@ -534,13 +541,13 @@ class Handler(BaseHTTPRequestHandler):
         with db() as conn:
             user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if not user or not verify_password(password, user["password_hash"]):
-            return self.send_json(401, {"detail": "Usuario ou senha invalidos"})
+            return self.send_json(401, {"detail": "Usuário ou senha inválidos"})
         self.send_json(200, {"token": create_token(int(user["id"])), "username": username})
 
     def me(self) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
             user = conn.execute(
                 "SELECT id, username, created_at FROM users WHERE id = ?",
@@ -551,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
                 (user_id,),
             ).fetchone()
         if not user:
-            return self.send_json(404, {"detail": "Usuario nao encontrado"})
+            return self.send_json(404, {"detail": "Usuário não encontrado"})
         self.send_json(
             200,
             {
@@ -565,7 +572,7 @@ class Handler(BaseHTTPRequestHandler):
     def list_characters(self) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
             rows = conn.execute(
                 "SELECT id, name, updated_at FROM characters WHERE user_id = ? ORDER BY updated_at DESC",
@@ -576,7 +583,7 @@ class Handler(BaseHTTPRequestHandler):
     def create_character(self) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
             return self.send_json(400, {"detail": "Casa ou armadura invalida"})
@@ -593,7 +600,7 @@ class Handler(BaseHTTPRequestHandler):
     def get_character(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         character_id = path.rsplit("/", 1)[-1]
         with db() as conn:
             row = conn.execute(
@@ -607,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
                 (user_id, character_id, user_id),
             ).fetchone()
         if not row:
-            return self.send_json(404, {"detail": "Personagem nao encontrado"})
+            return self.send_json(404, {"detail": "Personagem não encontrado"})
         self.send_json(
             200,
             {
@@ -622,25 +629,35 @@ class Handler(BaseHTTPRequestHandler):
     def update_character(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         character_id = path.rsplit("/", 1)[-1]
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
             return self.send_json(400, {"detail": "Casa ou armadura invalida"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         with db() as conn:
+            row = conn.execute(
+                "SELECT data FROM characters WHERE id = ? AND user_id = ?",
+                (character_id, user_id),
+            ).fetchone()
+            if not row:
+                return self.send_json(404, {"detail": "Personagem não encontrado"})
+            current_data = json.loads(row["data"])
+            current_archetype = str(current_data.get("arquetipo") or "").strip()
+            if current_archetype:
+                data["arquetipo"] = current_archetype
             cursor = conn.execute(
                 "UPDATE characters SET name = ?, data = ?, updated_at = ? WHERE id = ? AND user_id = ?",
                 (name, json.dumps(data, ensure_ascii=False), int(time.time()), character_id, user_id),
             )
         if cursor.rowcount == 0:
-            return self.send_json(404, {"detail": "Personagem nao encontrado"})
+            return self.send_json(404, {"detail": "Personagem não encontrado"})
         self.send_json(200, {"id": int(character_id), "name": name})
 
     def delete_character(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         character_id = path.rsplit("/", 1)[-1]
         with db() as conn:
             cursor = conn.execute(
@@ -648,7 +665,7 @@ class Handler(BaseHTTPRequestHandler):
                 (character_id, user_id),
             )
         if cursor.rowcount == 0:
-            return self.send_json(404, {"detail": "Personagem nao encontrado"})
+            return self.send_json(404, {"detail": "Personagem não encontrado"})
         self.send_json(200, {"deleted": True})
 
     def campaign_access(self, conn: sqlite3.Connection, campaign_id: str, user_id: int) -> sqlite3.Row | None:
@@ -666,7 +683,7 @@ class Handler(BaseHTTPRequestHandler):
     def list_campaigns(self) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
             rows = conn.execute(
                 """
@@ -690,12 +707,12 @@ class Handler(BaseHTTPRequestHandler):
     def create_campaign(self) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         payload = self.read_json()
         name = str(payload.get("name", "")).strip()[:120]
         description = str(payload.get("description", "")).strip()[:2000]
         if not name:
-            return self.send_json(400, {"detail": "Nome obrigatorio"})
+            return self.send_json(400, {"detail": "Nome obrigatório"})
         now = int(time.time())
         with db() as conn:
             cursor = conn.execute(
@@ -715,12 +732,12 @@ class Handler(BaseHTTPRequestHandler):
     def get_campaign(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         with db() as conn:
             campaign = self.campaign_access(conn, campaign_id, user_id)
             if not campaign:
-                return self.send_json(404, {"detail": "Campanha nao encontrada"})
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             members = conn.execute(
                 """
                 SELECT u.id, u.username, cm.joined_at
@@ -784,7 +801,7 @@ class Handler(BaseHTTPRequestHandler):
     def update_campaign_diary(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         content = str(self.read_json().get("content", ""))[:12000]
         now = int(time.time())
@@ -794,7 +811,7 @@ class Handler(BaseHTTPRequestHandler):
                 (campaign_id, user_id),
             ).fetchone()
             if not campaign:
-                return self.send_json(404, {"detail": "Campanha nao encontrada"})
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             cursor = conn.execute(
                 """
                 UPDATE campaign_diaries
@@ -817,26 +834,26 @@ class Handler(BaseHTTPRequestHandler):
     def update_campaign(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         payload = self.read_json()
         name = str(payload.get("name", "")).strip()[:120]
         description = str(payload.get("description", "")).strip()[:2000]
         if not name:
-            return self.send_json(400, {"detail": "Nome obrigatorio"})
+            return self.send_json(400, {"detail": "Nome obrigatório"})
         with db() as conn:
             cursor = conn.execute(
                 "UPDATE campaigns SET name = ?, description = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
                 (name, description, int(time.time()), campaign_id, user_id),
             )
         if cursor.rowcount == 0:
-            return self.send_json(404, {"detail": "Campanha nao encontrada"})
+            return self.send_json(404, {"detail": "Campanha não encontrada"})
         self.send_json(200, {"id": int(campaign_id), "name": name})
 
     def delete_campaign(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         with db() as conn:
             campaign = conn.execute(
@@ -844,7 +861,7 @@ class Handler(BaseHTTPRequestHandler):
                 (campaign_id, user_id),
             ).fetchone()
             if not campaign:
-                return self.send_json(404, {"detail": "Campanha nao encontrada"})
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?", (campaign_id,))
@@ -864,18 +881,18 @@ class Handler(BaseHTTPRequestHandler):
                 (code,),
             ).fetchone()
         if not campaign:
-            return self.send_json(404, {"detail": "Convite invalido"})
+            return self.send_json(404, {"detail": "Convite inválido"})
         self.send_json(200, dict(campaign))
 
     def join_campaign(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         code = path.rsplit("/", 1)[-1]
         with db() as conn:
             campaign = conn.execute("SELECT id FROM campaigns WHERE invite_code = ?", (code,)).fetchone()
             if not campaign:
-                return self.send_json(404, {"detail": "Convite invalido"})
+                return self.send_json(404, {"detail": "Convite inválido"})
             conn.execute(
                 "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, joined_at) VALUES (?, ?, ?)",
                 (campaign["id"], user_id, int(time.time())),
@@ -885,7 +902,7 @@ class Handler(BaseHTTPRequestHandler):
     def add_campaign_character(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         character_id = str(self.read_json().get("character_id", ""))
         with db() as conn:
@@ -895,9 +912,9 @@ class Handler(BaseHTTPRequestHandler):
                 (character_id, user_id),
             ).fetchone()
             if not campaign:
-                return self.send_json(404, {"detail": "Campanha nao encontrada"})
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             if not character:
-                return self.send_json(404, {"detail": "Personagem nao encontrado"})
+                return self.send_json(404, {"detail": "Personagem não encontrado"})
             conn.execute(
                 """
                 INSERT OR IGNORE INTO campaign_characters (campaign_id, character_id, added_by, added_at)
@@ -911,13 +928,13 @@ class Handler(BaseHTTPRequestHandler):
     def remove_campaign_character(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
-            return self.send_json(401, {"detail": "Login necessario"})
+            return self.send_json(401, {"detail": "Login necessário"})
         parts = path.strip("/").split("/")
         campaign_id, character_id = parts[1], parts[3]
         with db() as conn:
             campaign = self.campaign_access(conn, campaign_id, user_id)
             if not campaign:
-                return self.send_json(404, {"detail": "Campanha nao encontrada"})
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             cursor = conn.execute(
                 """
                 DELETE FROM campaign_characters
@@ -930,7 +947,7 @@ class Handler(BaseHTTPRequestHandler):
                 (campaign_id, character_id, user_id, campaign_id, user_id),
             )
         if cursor.rowcount == 0:
-            return self.send_json(404, {"detail": "Ficha nao encontrada na campanha"})
+            return self.send_json(404, {"detail": "Ficha não encontrada na campanha"})
         self.send_json(200, {"deleted": True})
 
 
