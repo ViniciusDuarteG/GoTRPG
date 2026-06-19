@@ -209,6 +209,12 @@ select {
   color: #24130b;
 }
 
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+
 textarea {
   min-height: 96px;
   resize: vertical;
@@ -299,6 +305,87 @@ textarea {
 
 .wide {
   margin-top: 12px;
+}
+
+.checkField {
+  min-height: 42px;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  align-self: end;
+  padding: 10px 11px;
+  border: 1px solid #a46b35;
+  border-radius: 4px;
+  background: #f7e6bd;
+  color: #120804 !important;
+}
+
+.inventoryField {
+  margin-top: 12px;
+}
+
+.inventoryAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.inventoryList {
+  max-height: 220px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #a46b35;
+  border-radius: 4px;
+  background: rgba(247, 230, 189, .82);
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.inventoryList p {
+  margin: 0;
+  color: #1d0c05;
+  font-weight: 700;
+}
+
+.inventoryItem {
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid #c08b49;
+  border-radius: 4px;
+  background: #f7e6bd;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.inventoryItem span {
+  color: #120804;
+  font-weight: 800;
+}
+
+.inventoryItem small {
+  color: #3c2112;
+  font-weight: 700;
+}
+
+.inventoryItem button {
+  min-height: 34px;
+  padding: 6px;
+}
+
+.mountItem {
+  grid-template-columns: minmax(0, 1fr) auto 38px;
+}
+
+.inlineCheck {
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.inlineCheck span {
+  min-width: 0;
 }
 
 .imageField {
@@ -544,6 +631,8 @@ textarea {
 
   .twoCols,
   .skillRow,
+  .inventoryAdd,
+  .inventoryItem,
   .imageField {
     grid-template-columns: 1fr;
   }

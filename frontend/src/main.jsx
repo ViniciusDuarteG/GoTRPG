@@ -10,7 +10,7 @@ const skills = [
   'Furtividade', 'Guerra', 'Idioma', 'Ladinagem', 'Lidar com Animais',
   'Luta', 'Percepcao', 'Persuasao', 'Pontaria', 'Sobrevivencia', 'Status',
   'Vigor', 'Vontade'
-];
+].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
 const houseOptions = Array.from(new Set([
   'Sem Casa', 'Povo Livre', 'Casa Stark', 'Casa Lannister', 'Casa Targaryen',
@@ -43,13 +43,193 @@ const houseOptions = Array.from(new Set([
   'Casa Strong', 'Casa Mudd', 'Casa Durrandon', 'Casa Hoare',
   'Casa Gardener', 'Casa Justman', 'Casa Lothston', 'Casa Harroway',
   'Casa Toyne', 'Casa Cole'
-]));
+])).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+const armorOptions = [
+  { name: 'Roupas', defense: 0, movement: 0 },
+  { name: 'Robes', defense: 0, movement: 0 },
+  { name: 'Acholchoada', defense: 1, movement: -1 },
+  { name: 'Couro Macio', defense: 2, movement: -1 },
+  { name: 'Couro Rigo', defense: 3, movement: -1 },
+  { name: 'Madeira ou ossos', defense: 4, movement: -2 },
+  { name: 'Cota de aneis', defense: 4, movement: -2 },
+  { name: 'Peles', defense: 5, movement: -3 },
+  { name: 'Cota de malha', defense: 5, movement: -3 },
+  { name: 'Cota de Escamas', defense: 6, movement: -3 },
+  { name: 'Brigantina', defense: 8, movement: -4 },
+  { name: 'Meia Armadura', defense: 9, movement: -5 },
+  { name: 'Placas', defense: 10, movement: -5 }
+].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+const equipmentOptions = [
+  { name: 'Broquel', weight: '1,5 kg', price: '1 DO' },
+  { name: 'Escudo', weight: '2,5 kg', price: '1 DO' },
+  { name: 'Escudo de Corpo', weight: '5 kg', price: '1 DO' },
+  { name: 'Escudo Grande', weight: '3 kg', price: '1 DO' },
+  { name: 'Robes', weight: '10 kg', price: '1 DO' },
+  { name: 'Acolchoada', weight: '5 kg', price: '1 DO' },
+  { name: 'Couro Macio', weight: '7,5 kg', price: '2 DO' },
+  { name: 'Couro Rigido', weight: '9 kg', price: '2 DO' },
+  { name: 'Ossos ou Madeira', weight: '12,5 kg', price: '2 DO' },
+  { name: 'Cota de Aneis', weight: '10 kg', price: '3 DO' },
+  { name: 'Peles', weight: '12,5 kg', price: '2 DO' },
+  { name: 'Cota de Malha', weight: '20 kg', price: '4 DO' },
+  { name: 'Couraca', weight: '25 kg', price: '4 DO' },
+  { name: 'Cota de Escamas/Moedas', weight: '15 kg', price: '3 DO' },
+  { name: 'Talas', weight: '25 kg', price: '5 DO' },
+  { name: 'Brigantina', weight: '25 kg', price: '6 DO' },
+  { name: 'Meia Armadura', weight: '20 kg', price: '10 DO' },
+  { name: 'Placas', weight: '25 kg', price: '50 DO' },
+  { name: 'Bolsa de cinto', weight: '', price: '1 DO' },
+  { name: 'Corda', weight: '', price: '1 DO' },
+  { name: 'Estacas de ferro', weight: '', price: '1 DO' },
+  { name: 'Ferramentas profissionais comuns', weight: '', price: '1 DO' },
+  { name: 'Ferramentas profissionais de especialista', weight: '', price: '1 a 5 DO' },
+  { name: 'Frasco', weight: '', price: '1 DO' },
+  { name: 'Instrumento musical simples', weight: '', price: '1 DO' },
+  { name: 'Kit de Meistre', weight: '', price: '1 a 3 DO' },
+  { name: 'Lamparina', weight: '', price: '1 DO' },
+  { name: 'Lampiao', weight: '', price: '1 DO' },
+  { name: 'Lente Myresa', weight: '', price: '1 DO' },
+  { name: 'Mochila', weight: '', price: '1 DO' },
+  { name: 'Odre', weight: '', price: '1 DO' },
+  { name: 'Oleo', weight: '', price: '1 DO' },
+  { name: 'Olhos Longinquos', weight: '', price: '2 DO' },
+  { name: 'Pavilhao', weight: '', price: '1 DO' },
+  { name: 'Pederneira', weight: '', price: '1 DO' },
+  { name: 'Pedra de amolar', weight: '', price: '1 DO' },
+  { name: 'Perfume', weight: '', price: '1 DO' },
+  { name: 'Sache', weight: '', price: '1 DO' },
+  { name: 'Tenda de soldado', weight: '', price: '1 DO' },
+  { name: 'Tinta preta', weight: '', price: '1 DO' },
+  { name: 'Tocha', weight: '', price: '1 DO' },
+  { name: 'Par de velas', weight: '', price: '1 DO' }
+].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+const weaponOptions = [
+  { name: 'Bola com Corrente', weight: '4 kg', price: '1 DO', damage: '5 + 1d8' },
+  { name: 'Cajado', weight: '2 kg', price: '-', damage: '3 + 1d6' },
+  { name: 'Porrete/Bordao', weight: '1,5 kg', price: '1 DO', damage: '2 + 1d4' },
+  { name: 'Maca', weight: '5 kg', price: '1 DO', damage: '5 + 1d6' },
+  { name: 'Mangual', weight: '6 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Mangual com Cravos', weight: '4 kg', price: '1 DO', damage: '5 + 1d8' },
+  { name: 'Marreta', weight: '6,5 kg', price: '1 DO', damage: '7 + 1d12' },
+  { name: 'Martelo de Guerra', weight: '4 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Alabarda', weight: '5,5 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Ferramenta de Aldeao', weight: '4,5 kg', price: '1 DO', damage: '4 + 1d6' },
+  { name: 'Machado de Haste', weight: '4,5 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Chicote', weight: '1 kg', price: '1 DO', damage: '2 + 1d4' },
+  { name: 'Faca', weight: '0,5 kg', price: '1 DO', damage: '3 + 1d4' },
+  { name: 'Improvisada', weight: '-', price: '0 DO', damage: '2 + 1d4' },
+  { name: 'Manopla', weight: '-', price: '-', damage: '2 + 1d4' },
+  { name: 'Punho', weight: '-', price: '0 DO', damage: '1 + 1d4' },
+  { name: 'Adaga de Mao Esquerda', weight: '0,5 kg', price: '1 DO', damage: '3 + 1d4' },
+  { name: 'Espada Pequena', weight: '1,5 kg', price: '2 DO', damage: '4 + 1d6' },
+  { name: 'Lamina Braavosi', weight: '1,5 kg', price: '4 DO', damage: '5 + 1d8' },
+  { name: 'Adaga', weight: '0,5 kg', price: '1 DO', damage: '3 + 1d4' },
+  { name: 'Estilete', weight: '0,25 kg', price: '1 DO', damage: '4 + 1d4' },
+  { name: 'Punhal', weight: '0,5 kg', price: '1 DO', damage: '3 + 1d4' },
+  { name: 'Arakh', weight: '2 kg', price: '3 DO', damage: '5 + 1d8' },
+  { name: 'Espada Bastarda', weight: '5 kg', price: '4 DO', damage: '6 + 1d10' },
+  { name: 'Espada Longa', weight: '2 kg', price: '3 DO', damage: '5 + 1d8' },
+  { name: 'Montante', weight: '7,5 kg', price: '4 DO', damage: '7 + 1d12' },
+  { name: 'Lanca', weight: '3 kg', price: '1 DO', damage: '4 + 1d6' },
+  { name: 'Lanca de Guerra', weight: '5 kg', price: '1 DO', damage: '8 + 1d20' },
+  { name: 'Lanca de Javali', weight: '4,5 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Lanca de Sapo', weight: '1,5 kg', price: '1 DO', damage: '4 + 1d6' },
+  { name: 'Lanca de Torneio', weight: '4 kg', price: '1 DO', damage: '5 + 1d10' },
+  { name: 'Pique', weight: '4,5 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Tridente', weight: '2,5 kg', price: '1 DO', damage: '5 + 1d8' },
+  { name: 'Bico de Corvo', weight: '3 kg', price: '1 DO', damage: '5 + 1d6' },
+  { name: 'Machadinha', weight: '2 kg', price: '1 DO', damage: '3 + 1d6' },
+  { name: 'Machado de Batalha', weight: '3,5 kg', price: '1 DO', damage: '5 + 1d8' },
+  { name: 'Machado de Lenhador', weight: '3 kg', price: '1 DO', damage: '6 + 1d10' },
+  { name: 'Machado Longo', weight: '10 kg', price: '3 DO', damage: '7 + 1d12' },
+  { name: 'Picareta', weight: '5 kg', price: '1 DO', damage: '5 + 1d8' },
+  { name: 'Arco de Caca', weight: '1,5 kg', price: '1 DO', damage: '4 + 1d6' },
+  { name: 'Arco de Curvatura Dupla', weight: '1 kg', price: '3 DO', damage: '5 + 1d8' },
+  { name: 'Arco Longo', weight: '1,5 kg', price: '5 DO', damage: '6 + 1d10' },
+  { name: 'Municao de arco - 12', weight: '0,5 kg', price: '1 DO', damage: '-' },
+  { name: 'Azagaia', weight: '1,5 kg', price: '1 DO', damage: '4 + 1d6' },
+  { name: 'Funda', weight: '0,1 kg', price: '-', damage: '3 + 1d4' },
+  { name: 'Rede', weight: '2 kg', price: '1 DO', damage: 'Enreda' },
+  { name: 'Besta Leve', weight: '3 kg', price: '1 DO', damage: '4 + 1d8' },
+  { name: 'Besta Media', weight: '4 kg', price: '2 DO', damage: '5 + 1d10' },
+  { name: 'Besta Myresa', weight: '4,5 kg', price: '10 DO', damage: '5 + 1d10' },
+  { name: 'Besta Pesada', weight: '4,5 kg', price: '5 DO', damage: '6 + 1d12' },
+  { name: 'Municao de besta - 12', weight: '0,5 kg', price: '1 DO', damage: '-' }
+].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+const mountOptions = [
+  { name: 'Cavalo de Tracao', price: '200 DO', movement: 2 },
+  { name: 'Corcel de Areia', price: '600 DO', movement: 4 },
+  { name: 'Corcel', price: '300 DO', movement: 3 },
+  { name: 'Puro-Sangue', price: '1000 DO', movement: 5 },
+  { name: 'Garrano', price: '200 DO', movement: 2 },
+  { name: 'Mula', price: '100 DO', movement: 1 },
+  { name: 'Palafrem', price: '100 DO', movement: 2 },
+  { name: 'Ponei', price: '50 DO', movement: 1 },
+  { name: 'Cavalo de Batalha', price: '500 DO', movement: 4 },
+  { name: 'Carroca', price: '300 DO', movement: 3 },
+  { name: 'Carruagem', price: '600 DO', movement: 6 },
+  { name: 'Treno', price: '300 DO', movement: 3 }
+].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+function armorByName(name) {
+  return armorOptions.find((armor) => armor.name === name) || armorOptions.find((armor) => armor.name === 'Roupas') || armorOptions[0];
+}
+
+function priceInCrowns(price) {
+  const text = String(price || '');
+  if (!text.includes('DO')) return text;
+  return text
+    .replace(/\d+(?:[,.]\d+)?/g, (value) => String(Math.floor((Number(value.replace(',', '.')) / 210) * 1000) * 10))
+    .replace(/\s*DO\b/g, ' coroas');
+}
+
+function withCrowns(item) {
+  return { ...item, price: priceInCrowns(item.price) };
+}
+
+function numberValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function skillGrade(data, skill) {
+  return numberValue(data.habilidades?.[skill]?.grau);
+}
+
+function calculatedDefenses(data) {
+  const armor = armorByName(data.armadura);
+  const mountBonus = Array.isArray(data.montarias)
+    ? data.montarias.filter((mount) => mount.active).reduce((total, mount) => total + numberValue(mount.movement), 0)
+    : 0;
+  const movimento = 9 + armor.movement + mountBonus;
+  const shieldBonus = data.escudoAtivo ? 2 : 0;
+  return {
+    intriga: String(skillGrade(data, 'Astucia') + skillGrade(data, 'Percepcao') + skillGrade(data, 'Status')),
+    combate: String(skillGrade(data, 'Agilidade') + skillGrade(data, 'Atletismo') + skillGrade(data, 'Percepcao') + armor.movement + shieldBonus),
+    saude: String(skillGrade(data, 'Vigor') * 3),
+    movimento: String(movimento),
+    corrida: String(movimento * 3),
+    bonusArmadura: armor.defense,
+    bonusEscudo: shieldBonus,
+    bonusMontaria: mountBonus,
+    penalidadeMovimentoArmadura: armor.movement
+  };
+}
+
+function withCalculatedDefenses(data) {
+  return { ...data, ...calculatedDefenses(data) };
+}
 
 const blankCharacter = {
   nome: '', imagem: '', casa: 'Sem Casa', idade: '', sexo: '', jogador: '', descricao: '',
-  nivel: 1, destino: '', intriga: '', combate: '', armadura: '', armas: '',
-  equipamentos: '', saude: '', ferimentos: '', lesoes: '', movimento: '',
-  corrida: '', altura: '', peso: '', olhos: '', cabelos: '', marcas: '',
+  xp: '', nivel: '', destino: '', intriga: '0', combate: '0', armadura: 'Roupas', armas: '',
+  armasAtaques: [],
+  equipamentos: '', inventario: [], saude: '0', ferimentos: '', lesoes: '', escudoAtivo: false, bonusEscudo: 0, movimento: '9',
+  corrida: '27', bonusMontaria: 0, montarias: [], altura: '', peso: '', olhos: '', cabelos: '', marcas: '',
   detalhes: '', objetivo: '', motivacao: '', virtude: '', vicio: '',
   personalidade: '', historia: '', juramentos: '', obrigacoes: '',
   aliados: '', inimigos: '', posses: '', dinheiro: '', experiencia: '',
@@ -233,8 +413,8 @@ function Profile() {
   );
 }
 
-function Field({ label, value, onChange, type = 'text' }) {
-  return <label>{label}<input type={type} value={value || ''} onChange={(e) => onChange(e.target.value)} /></label>;
+function Field({ label, value, onChange, type = 'text', readOnly = false }) {
+  return <label>{label}<input type={type} readOnly={readOnly} value={value || ''} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
 function HouseField({ value, onChange }) {
@@ -249,8 +429,124 @@ function HouseField({ value, onChange }) {
   );
 }
 
+function SexField({ value, onChange }) {
+  return (
+    <label>
+      Sexo
+      <select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Selecione</option>
+        <option value="Masculino">Masculino</option>
+        <option value="Feminino">Feminino</option>
+      </select>
+    </label>
+  );
+}
+
+function ArmorField({ value, onChange }) {
+  return (
+    <label>
+      Armadura
+      <select value={value || 'Roupas'} onChange={(e) => onChange(e.target.value)}>
+        {armorOptions.map((armor) => (
+          <option key={armor.name} value={armor.name}>
+            {armor.name} / Defesa +{armor.defense} / Movimento {armor.movement}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function TextField({ label, value, onChange }) {
   return <label className="wide">{label}<textarea value={value || ''} onChange={(e) => onChange(e.target.value)} /></label>;
+}
+
+function ItemListField({ title, options, items, onChange, showDamage = false }) {
+  const [selected, setSelected] = useState(options[0].name);
+  const selectedItem = withCrowns(options.find((item) => item.name === selected) || options[0]);
+
+  function addItem() {
+    onChange([...(Array.isArray(items) ? items : []), selectedItem]);
+  }
+
+  function removeItem(index) {
+    onChange((Array.isArray(items) ? items : []).filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <div className="inventoryField">
+      <h2>{title}</h2>
+      <div className="inventoryAdd">
+        <select value={selected} onChange={(event) => setSelected(event.target.value)}>
+          {options.map((item) => (
+            <option key={item.name} value={item.name}>
+              {item.name}{item.weight ? ` / ${item.weight}` : ''} / {priceInCrowns(item.price)}{showDamage ? ` / ${item.damage}` : ''}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={addItem}><Plus size={18} />Adicionar</button>
+      </div>
+      <div className="inventoryList">
+        {(Array.isArray(items) ? items : []).map((item, index) => (
+          <div className="inventoryItem" key={`${item.name}-${index}`}>
+            <span>{item.name}</span>
+            <small>{item.weight ? `${item.weight} / ` : ''}{priceInCrowns(item.price)}{showDamage ? ` / ${item.damage}` : ''}</small>
+            <button type="button" onClick={() => removeItem(index)}><X size={16} /></button>
+          </div>
+        ))}
+        {(!Array.isArray(items) || items.length === 0) && <p>Nenhum item.</p>}
+      </div>
+    </div>
+  );
+}
+
+function MountField({ items, onChange }) {
+  const [selected, setSelected] = useState(mountOptions[0].name);
+  const selectedItem = mountOptions.find((item) => item.name === selected) || mountOptions[0];
+  const mounts = Array.isArray(items) ? items : [];
+
+  function addItem() {
+    onChange([...mounts, { ...withCrowns(selectedItem), active: false }]);
+  }
+
+  function removeItem(index) {
+    onChange(mounts.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function toggleItem(index) {
+    onChange(mounts.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, active: !item.active } : item
+    )));
+  }
+
+  return (
+    <div className="inventoryField">
+      <h2>Montaria</h2>
+      <div className="inventoryAdd">
+        <select value={selected} onChange={(event) => setSelected(event.target.value)}>
+          {mountOptions.map((item) => (
+            <option key={item.name} value={item.name}>
+              {item.name} / {priceInCrowns(item.price)} / +{item.movement} m
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={addItem}><Plus size={18} />Adicionar</button>
+      </div>
+      <div className="inventoryList">
+        {mounts.map((item, index) => (
+          <div className="inventoryItem mountItem" key={`${item.name}-${index}`}>
+            <label className="inlineCheck">
+              <input type="checkbox" checked={Boolean(item.active)} onChange={() => toggleItem(index)} />
+              <span>{item.name}</span>
+            </label>
+            <small>{priceInCrowns(item.price)} / +{item.movement} m</small>
+            <button type="button" onClick={() => removeItem(index)}><X size={16} /></button>
+          </div>
+        ))}
+        {!mounts.length && <p>Nenhuma montaria.</p>}
+      </div>
+    </div>
+  );
 }
 
 function ImageField({ value, onChange }) {
@@ -314,7 +610,11 @@ function CharacterForm({ go, id }) {
     request(`/characters/${id}`)
       .then((character) => {
         const loaded = { ...blankCharacter, ...character.data };
-        setData({ ...loaded, casa: houseOptions.includes(loaded.casa) ? loaded.casa : 'Sem Casa' });
+        setData(withCalculatedDefenses({
+          ...loaded,
+          casa: houseOptions.includes(loaded.casa) ? loaded.casa : 'Sem Casa',
+          armadura: armorOptions.some((armor) => armor.name === loaded.armadura) ? loaded.armadura : 'Roupas'
+        }));
         setCanEdit(Boolean(character.can_edit));
       })
       .catch((err) => setError(err.message))
@@ -323,9 +623,20 @@ function CharacterForm({ go, id }) {
 
   const houseValid = houseOptions.includes(data.casa);
 
-  const set = (key, value) => setData((current) => ({ ...current, [key]: value }));
+  const set = (key, value) => setData((current) => withCalculatedDefenses({ ...current, [key]: value }));
+  const setArmor = (name) => {
+    setData((current) => {
+      const newArmor = armorByName(name);
+      return withCalculatedDefenses({
+        ...current,
+        armadura: newArmor.name,
+        bonusArmadura: newArmor.defense,
+        penalidadeMovimentoArmadura: newArmor.movement
+      });
+    });
+  };
   const setSkill = (skill, key, value) => {
-    setData((current) => ({
+    setData((current) => withCalculatedDefenses({
       ...current,
       habilidades: {
         ...current.habilidades,
@@ -341,10 +652,12 @@ function CharacterForm({ go, id }) {
       return;
     }
     try {
+      const characterData = withCalculatedDefenses(data);
       const saved = await request(id ? `/characters/${id}` : '/characters', {
         method: id ? 'PUT' : 'POST',
-        body: JSON.stringify({ data })
+        body: JSON.stringify({ data: characterData })
       });
+      setData(characterData);
       go(`/characters/${saved.id}`);
       setEditing(false);
     } catch (err) {
@@ -383,18 +696,16 @@ function CharacterForm({ go, id }) {
           <div className="twoCols">
             <Field label="Nome" value={data.nome} onChange={(v) => set('nome', v)} />
             <HouseField value={data.casa} onChange={(v) => set('casa', v)} />
-            <Field label="Idade" value={data.idade} onChange={(v) => set('idade', v)} />
-            <Field label="Sexo" value={data.sexo} onChange={(v) => set('sexo', v)} />
-            <Field label="Jogador" value={data.jogador} onChange={(v) => set('jogador', v)} />
-            <Field label="Nivel" type="number" value={data.nivel} onChange={(v) => set('nivel', v)} />
+            <Field label="Idade" type="number" value={data.idade} onChange={(v) => set('idade', v)} />
+            <SexField value={data.sexo} onChange={(v) => set('sexo', v)} />
+            <Field label="XP" type="number" value={data.xp} onChange={(v) => set('xp', v)} />
           </div>
-          <TextField label="Descricao / mote" value={data.descricao} onChange={(v) => set('descricao', v)} />
           <h2>Habilidades</h2>
           <div className="skills">
             {skills.map((skill) => (
               <div className="skillRow" key={skill}>
                 <span>{skill}</span>
-                <input placeholder="Grau" value={data.habilidades?.[skill]?.grau || ''} onChange={(e) => setSkill(skill, 'grau', e.target.value)} />
+                <input type="number" placeholder="Grau" value={data.habilidades?.[skill]?.grau || ''} onChange={(e) => setSkill(skill, 'grau', e.target.value)} />
                 <input placeholder="Especialidade" value={data.habilidades?.[skill]?.especialidade || ''} onChange={(e) => setSkill(skill, 'especialidade', e.target.value)} />
               </div>
             ))}
@@ -404,17 +715,21 @@ function CharacterForm({ go, id }) {
         <section className="parchment">
           <h2>Conflito</h2>
           <div className="twoCols">
-            <Field label="Defesa em Intriga" value={data.intriga} onChange={(v) => set('intriga', v)} />
-            <Field label="Defesa em Combate" value={data.combate} onChange={(v) => set('combate', v)} />
-            <Field label="Saude" value={data.saude} onChange={(v) => set('saude', v)} />
+            <Field label="Defesa em Intriga" type="number" readOnly value={data.intriga} onChange={() => {}} />
+            <Field label="Defesa em Combate" type="number" readOnly value={data.combate} onChange={() => {}} />
+            <Field label="Saude" type="number" readOnly value={data.saude} onChange={() => {}} />
             <Field label="Ferimentos" value={data.ferimentos} onChange={(v) => set('ferimentos', v)} />
             <Field label="Lesoes" value={data.lesoes} onChange={(v) => set('lesoes', v)} />
-            <Field label="Movimento" value={data.movimento} onChange={(v) => set('movimento', v)} />
-            <Field label="Corrida" value={data.corrida} onChange={(v) => set('corrida', v)} />
-            <Field label="Armadura" value={data.armadura} onChange={(v) => set('armadura', v)} />
+            <Field label="Movimento" type="number" readOnly value={data.movimento} onChange={() => {}} />
+            <Field label="Corrida" type="number" readOnly value={data.corrida} onChange={() => {}} />
+            <ArmorField value={data.armadura} onChange={setArmor} />
+            <label className="checkField">
+              <input type="checkbox" checked={Boolean(data.escudoAtivo)} onChange={(e) => set('escudoAtivo', e.target.checked)} />
+              Ativar escudo (+2 Defesa de Combate)
+            </label>
           </div>
-          <TextField label="Armas / ataques" value={data.armas} onChange={(v) => set('armas', v)} />
-          <TextField label="Equipamento pessoal" value={data.equipamentos} onChange={(v) => set('equipamentos', v)} />
+          <ItemListField title="Armas e Ataques" options={weaponOptions} items={data.armasAtaques} onChange={(v) => set('armasAtaques', v)} showDamage />
+          <ItemListField title="Inventario" options={equipmentOptions} items={data.inventario} onChange={(v) => set('inventario', v)} />
           <h2>Aparencia</h2>
           <div className="twoCols">
             <Field label="Altura" value={data.altura} onChange={(v) => set('altura', v)} />
@@ -424,6 +739,7 @@ function CharacterForm({ go, id }) {
           </div>
           <TextField label="Marcas de distincao" value={data.marcas} onChange={(v) => set('marcas', v)} />
           <TextField label="Detalhes" value={data.detalhes} onChange={(v) => set('detalhes', v)} />
+          <MountField items={data.montarias} onChange={(v) => set('montarias', v)} />
         </section>
         <section className="parchment full">
           <h2>Personalidade e Historia</h2>

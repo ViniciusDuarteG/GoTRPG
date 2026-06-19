@@ -23,6 +23,21 @@ SECRET_KEY = os.environ.get("GOTRPG_SECRET_KEY") or secrets.token_hex(32)
 TOKEN_TTL = 60 * 60 * 24 * 7
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+ARMOR_STATS = {
+    "Roupas": {"defense": 0, "movement": 0},
+    "Robes": {"defense": 0, "movement": 0},
+    "Acholchoada": {"defense": 1, "movement": -1},
+    "Couro Macio": {"defense": 2, "movement": -1},
+    "Couro Rigo": {"defense": 3, "movement": -1},
+    "Madeira ou ossos": {"defense": 4, "movement": -2},
+    "Cota de aneis": {"defense": 4, "movement": -2},
+    "Peles": {"defense": 5, "movement": -3},
+    "Cota de malha": {"defense": 5, "movement": -3},
+    "Cota de Escamas": {"defense": 6, "movement": -3},
+    "Brigantina": {"defense": 8, "movement": -4},
+    "Meia Armadura": {"defense": 9, "movement": -5},
+    "Placas": {"defense": 10, "movement": -5},
+}
 HOUSE_OPTIONS = set(
     """
 Sem Casa
@@ -170,6 +185,65 @@ def clean_character_data(data: object) -> dict | None:
     if house not in HOUSE_OPTIONS:
         return None
     cleaned["casa"] = house
+    armor = str(cleaned.get("armadura") or "Roupas").strip()
+    if armor not in ARMOR_STATS:
+        return None
+    cleaned["armadura"] = armor
+    cleaned["bonusArmadura"] = ARMOR_STATS[armor]["defense"]
+    cleaned["penalidadeMovimentoArmadura"] = ARMOR_STATS[armor]["movement"]
+    habilidades = cleaned.get("habilidades", {})
+    if not isinstance(habilidades, dict):
+        habilidades = {}
+
+    def grade(name: str) -> int:
+        value = habilidades.get(name, {})
+        if not isinstance(value, dict):
+            return 0
+        try:
+            return int(value.get("grau") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    cleaned["intriga"] = str(grade("Astucia") + grade("Percepcao") + grade("Status"))
+    shield_bonus = 2 if bool(cleaned.get("escudoAtivo")) else 0
+    cleaned["escudoAtivo"] = bool(cleaned.get("escudoAtivo"))
+    cleaned["bonusEscudo"] = shield_bonus
+    cleaned["combate"] = str(
+        grade("Agilidade") + grade("Atletismo") + grade("Percepcao") + ARMOR_STATS[armor]["movement"] + shield_bonus
+    )
+    cleaned["saude"] = str(grade("Vigor") * 3)
+    mounts = cleaned.get("montarias", [])
+    if not isinstance(mounts, list):
+        mounts = []
+    mount_bonus = 0
+    clean_mounts = []
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            continue
+        try:
+            bonus = int(mount.get("movement") or 0)
+        except (TypeError, ValueError):
+            bonus = 0
+        active = bool(mount.get("active"))
+        if active:
+            mount_bonus += bonus
+        clean_mounts.append(
+            {
+                "name": str(mount.get("name", ""))[:120],
+                "price": str(mount.get("price", ""))[:40],
+                "movement": bonus,
+                "active": active,
+            }
+        )
+    cleaned["montarias"] = clean_mounts
+    cleaned["bonusMontaria"] = mount_bonus
+    movement = 9 + ARMOR_STATS[armor]["movement"] + mount_bonus
+    cleaned["movimento"] = str(movement)
+    cleaned["corrida"] = str(movement * 3)
+    inventory = cleaned.get("inventario", [])
+    cleaned["inventario"] = inventory if isinstance(inventory, list) else []
+    weapons = cleaned.get("armasAtaques", [])
+    cleaned["armasAtaques"] = weapons if isinstance(weapons, list) else []
     return cleaned
 
 
@@ -505,7 +579,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessario"})
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
-            return self.send_json(400, {"detail": "Casa invalida"})
+            return self.send_json(400, {"detail": "Casa ou armadura invalida"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         now = int(time.time())
         with db() as conn:
@@ -552,7 +626,7 @@ class Handler(BaseHTTPRequestHandler):
         character_id = path.rsplit("/", 1)[-1]
         data = clean_character_data(self.read_json().get("data", {}))
         if data is None:
-            return self.send_json(400, {"detail": "Casa invalida"})
+            return self.send_json(400, {"detail": "Casa ou armadura invalida"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         with db() as conn:
             cursor = conn.execute(
