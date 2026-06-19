@@ -5,18 +5,22 @@ services:
     restart: unless-stopped
     environment:
       PORT: 8003
-      GOTRPG_SECRET_KEY: ${GOTRPG_SECRET_KEY:-}
-      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-*}
+      GOTRPG_SECRET_KEY: '${GOTRPG_SECRET_KEY:-}'
+      ALLOWED_ORIGIN: '${ALLOWED_ORIGIN:-*}'
       DATA_DIR: /data
     volumes:
       - gotrpg_data:/data
+    expose:
+      - "8003"
 
   frontend:
     build:
       context: ./frontend
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-38473}:38473"
+    environment:
+      BACKEND_URL: http://backend:8003
+    expose:
+      - "38473"
     depends_on:
       - backend
 
