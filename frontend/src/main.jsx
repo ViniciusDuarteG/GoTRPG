@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BookOpen, Copy, Eye, Image as ImageIcon, LogOut, Plus, Save, ScrollText, Shield, Swords, Sword, Trash2, Upload, User, Users, X } from 'lucide-react';
+import { BookOpen, Copy, Eye, Image as ImageIcon, LogOut, Minus, Plus, Save, ScrollText, Shield, Swords, Sword, Trash2, Upload, User, Users, X } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -19,6 +19,15 @@ const skills = [
   'Luta', 'Percepcao', 'Persuasao', 'Pontaria', 'Sobrevivencia', 'Status',
   'Vigor', 'Vontade'
 ].sort((a, b) => (skillLabels[a] || a).localeCompare(skillLabels[b] || b, 'pt-BR'));
+
+const skillGradeCosts = {
+  1: 50,
+  3: 10,
+  4: 40,
+  5: 70,
+  6: 100,
+  7: 130
+};
 
 const houseOptions = Array.from(new Set([
   'Sem Casa', 'Povo Livre', 'Casa Stark', 'Casa Lannister', 'Casa Targaryen',
@@ -981,6 +990,31 @@ function CharacterForm({ go, id }) {
       }
     }));
   };
+  const changeSkillGrade = (skill, change) => {
+    setError('');
+    setData((current) => {
+      const currentGrade = numberValue(current.habilidades?.[skill]?.grau);
+      const grade = currentGrade || 0;
+      const nextGrade = grade + change;
+      if (nextGrade < 1 || nextGrade > 7) return current;
+
+      const cost = change > 0 ? (skillGradeCosts[nextGrade] || 0) : -(skillGradeCosts[grade] || 0);
+      const currentXp = numberValue(current.xp);
+      if (cost > 0 && currentXp < cost) {
+        setError('XP insuficiente');
+        return current;
+      }
+
+      return withCalculatedDefenses({
+        ...current,
+        xp: String(currentXp - cost),
+        habilidades: {
+          ...current.habilidades,
+          [skill]: { ...(current.habilidades?.[skill] || {}), grau: String(nextGrade) }
+        }
+      });
+    });
+  };
   const setArchetype = (archetypeName) => {
     setData((current) => applyArchetype(current, archetypeName));
   };
@@ -1050,7 +1084,15 @@ function CharacterForm({ go, id }) {
             {skills.map((skill) => (
               <div className="skillRow" key={skill}>
                 <span>{skillLabels[skill] || skill}</span>
-                <input type="number" placeholder="Grau" value={data.habilidades?.[skill]?.grau || ''} onChange={(e) => setSkill(skill, 'grau', e.target.value)} />
+                <div className="gradeControl">
+                  <button type="button" aria-label={`Diminuir ${skillLabels[skill] || skill}`} disabled={numberValue(data.habilidades?.[skill]?.grau) <= 1} onClick={() => changeSkillGrade(skill, -1)}>
+                    <Minus size={16} />
+                  </button>
+                  <strong>{data.habilidades?.[skill]?.grau || '-'}</strong>
+                  <button type="button" aria-label={`Aumentar ${skillLabels[skill] || skill}`} disabled={numberValue(data.habilidades?.[skill]?.grau) >= 7} onClick={() => changeSkillGrade(skill, 1)}>
+                    <Plus size={16} />
+                  </button>
+                </div>
                 <input placeholder="Especialidade" value={data.habilidades?.[skill]?.especialidade || ''} onChange={(e) => setSkill(skill, 'especialidade', e.target.value)} />
               </div>
             ))}
