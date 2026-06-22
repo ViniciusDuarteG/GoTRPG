@@ -1225,6 +1225,17 @@ function Campaigns({ go }) {
     request('/campaigns').then(setCampaigns).catch((err) => setError(err.message));
   }, []);
 
+  async function removeCampaign(campaign) {
+    if (!confirm(`Excluir ${campaign.name}?`)) return;
+    setError('');
+    try {
+      await request(`/campaigns/${campaign.id}`, { method: 'DELETE' });
+      setCampaigns((current) => current.filter((item) => item.id !== campaign.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
     <main className="listPage">
       <div className="formHeader">
@@ -1242,6 +1253,9 @@ function Campaigns({ go }) {
             </div>
             <div className="rowActions">
               <button onClick={() => go(`/campaigns/${campaign.id}`)}><Eye size={18} />Abrir</button>
+              {campaign.is_owner && (
+                <button className="danger" onClick={() => removeCampaign(campaign)}><Trash2 size={18} />Excluir</button>
+              )}
             </div>
           </article>
         ))}
@@ -1393,6 +1407,17 @@ function CampaignDetail({ go, id }) {
     }
   }
 
+  async function removeCampaign() {
+    if (!confirm(`Excluir ${campaign.name}?`)) return;
+    setError('');
+    try {
+      await request(`/campaigns/${id}`, { method: 'DELETE' });
+      go('/campaigns');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   if (!campaign && !error) return <main className="centerPage">Carregando...</main>;
 
   return (
@@ -1406,7 +1431,12 @@ function CampaignDetail({ go, id }) {
               <p>{campaign.description || 'Sem descrição'}</p>
               <small>Mestre: {campaign.owner_username}</small>
             </div>
-            <button onClick={copyInvite}><Copy size={18} />Copiar link</button>
+            <div className="rowActions">
+              <button onClick={copyInvite}><Copy size={18} />Copiar link</button>
+              {campaign.is_owner && (
+                <button className="danger" onClick={removeCampaign}><Trash2 size={18} />Excluir</button>
+              )}
+            </div>
           </div>
 
           <div className="campaignLayout">

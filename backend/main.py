@@ -738,7 +738,10 @@ class Handler(BaseHTTPRequestHandler):
                 """,
                 (user_id, user_id),
             ).fetchall()
-        self.send_json(200, [dict(row) for row in rows])
+        campaigns = [dict(row) for row in rows]
+        for campaign in campaigns:
+            campaign["is_owner"] = campaign["owner_id"] == user_id
+        self.send_json(200, campaigns)
 
     def create_campaign(self) -> None:
         user_id = self.user_id()
