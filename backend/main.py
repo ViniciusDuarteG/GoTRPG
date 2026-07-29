@@ -10,6 +10,8 @@ import os
 import re
 import secrets
 import sqlite3
+import struct
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +27,9 @@ SECRET_KEY = os.environ.get("GOTRPG_SECRET_KEY") or secrets.token_hex(32)
 TOKEN_TTL = 60 * 60 * 24 * 7
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+BOARD_WEBSOCKETS: dict[str, set["Handler"]] = {}
+BOARD_WEBSOCKET_LOCK = threading.Lock()
 MAP_TERRAINS = {
     "grass", "forest", "dirt", "stone", "sand", "water", "snow", "mud",
     "wood", "lava", "flagstone", "mossstone",
@@ -370,6 +375,32 @@ def clean_campaign_map(payload: object, fallback: dict | None = None) -> tuple[s
         object_name = str(raw_object)
         if 0 <= index < cell_count and object_name in MAP_OBJECTS:
             clean_objects[str(index)] = object_name
+    object_settings = base.get("object_settings", {})
+    if not isinstance(object_settings, dict):
+        object_settings = {}
+    clean_object_settings = {}
+    for raw_index, raw_setting in object_settings.items():
+        try:
+            index = int(raw_index)
+        except (TypeError, ValueError):
+            continue
+        if str(index) not in clean_objects or not isinstance(raw_setting, dict):
+            continue
+        try:
+            rotation = int(float(raw_setting.get("rotation", 0))) % 360
+            scale = min(2.5, max(0.4, float(raw_setting.get("scale", 1))))
+            elevation = min(9, max(0, int(float(raw_setting.get("elevation", 0)))))
+        except (TypeError, ValueError):
+            rotation, scale, elevation = 0, 1.0, 0
+        layer = str(raw_setting.get("layer", "objects"))
+        if layer not in {"ground", "objects", "roof", "gm"}:
+            layer = "objects"
+        clean_object_settings[str(index)] = {
+            "rotation": rotation,
+            "scale": round(scale, 2),
+            "elevation": elevation,
+            "layer": layer,
+        }
     try:
         brightness = min(115, max(20, int(base.get("brightness", 100))))
     except (TypeError, ValueError):
@@ -377,6 +408,7 @@ def clean_campaign_map(payload: object, fallback: dict | None = None) -> tuple[s
     data = {
         "tiles": clean_tiles,
         "objects": clean_objects,
+        "object_settings": clean_object_settings,
         "grid_visible": bool(base.get("grid_visible", True)),
         "time_of_day": str(base.get("time_of_day", "day"))
         if str(base.get("time_of_day", "day")) in {"dawn", "day", "dusk", "night"}
@@ -414,6 +446,39 @@ def clean_board_state(
                 continue
             if 0 <= index < grid_count and index not in blocked:
                 blocked.append(index)
+    doors = []
+    raw_doors = grid_payload.get("doors", [])
+    if isinstance(raw_doors, list) and grid_count:
+        for raw_door in raw_doors[:200]:
+            if not isinstance(raw_door, dict):
+                continue
+            try:
+                index = int(raw_door.get("index"))
+            except (TypeError, ValueError):
+                continue
+            if not 0 <= index < grid_count:
+                continue
+            door_id = str(raw_door.get("id", f"door-{index}"))[:80] or f"door-{index}"
+            if door_id in {door["id"] for door in doors}:
+                continue
+            doors.append(
+                {
+                    "id": door_id,
+                    "index": index,
+                    "open": bool(raw_door.get("open", False)),
+                    "label": str(raw_door.get("label", "Porta"))[:80] or "Porta",
+                }
+            )
+    explored = []
+    raw_explored = base.get("explored", [])
+    if isinstance(raw_explored, list) and grid_count:
+        for raw_index in raw_explored[:1200]:
+            try:
+                index = int(raw_index)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < grid_count and index not in explored:
+                explored.append(index)
 
     try:
         vision_radius = min(12, max(1, int(base.get("vision_radius", 5))))
@@ -422,6 +487,96 @@ def clean_board_state(
     weather = str(base.get("weather", "clear"))
     if weather not in {"clear", "rain", "snow", "mist", "storm"}:
         weather = "clear"
+
+    lights = []
+    raw_lights = base.get("lights", [])
+    if isinstance(raw_lights, list):
+        for raw_light in raw_lights[:80]:
+            if not isinstance(raw_light, dict):
+                continue
+            try:
+                x = min(100, max(0, float(raw_light.get("x", 50))))
+                y = min(100, max(0, float(raw_light.get("y", 50))))
+                radius = min(12, max(1, float(raw_light.get("radius", 4))))
+                intensity = min(1, max(0.1, float(raw_light.get("intensity", 0.75))))
+            except (TypeError, ValueError):
+                continue
+            light_id = str(raw_light.get("id", ""))[:80] or secrets.token_hex(6)
+            if light_id in {light["id"] for light in lights}:
+                continue
+            color = str(raw_light.get("color", "#ffb347"))
+            if not re.match(r"^#[0-9a-fA-F]{6}$", color):
+                color = "#ffb347"
+            lights.append(
+                {
+                    "id": light_id,
+                    "x": round(x, 3),
+                    "y": round(y, 3),
+                    "radius": round(radius, 2),
+                    "intensity": round(intensity, 2),
+                    "color": color,
+                    "label": str(raw_light.get("label", "Luz"))[:80] or "Luz",
+                }
+            )
+
+    markers = []
+    raw_markers = base.get("markers", [])
+    if isinstance(raw_markers, list):
+        for raw_marker in raw_markers[:160]:
+            if not isinstance(raw_marker, dict):
+                continue
+            try:
+                x = min(100, max(0, float(raw_marker.get("x", 50))))
+                y = min(100, max(0, float(raw_marker.get("y", 50))))
+            except (TypeError, ValueError):
+                continue
+            marker_id = str(raw_marker.get("id", ""))[:80] or secrets.token_hex(6)
+            if marker_id in {marker["id"] for marker in markers}:
+                continue
+            marker_type = str(raw_marker.get("type", "trap"))
+            if marker_type not in {"trap", "secret", "objective"}:
+                marker_type = "secret"
+            markers.append(
+                {
+                    "id": marker_id,
+                    "type": marker_type,
+                    "x": round(x, 3),
+                    "y": round(y, 3),
+                    "label": str(raw_marker.get("label", "Marcador"))[:120] or "Marcador",
+                    "hidden": bool(raw_marker.get("hidden", True)),
+                }
+            )
+
+    token_stats = {}
+    raw_token_stats = base.get("token_stats", {})
+    allowed_conditions = {"caido", "atordoado", "cego", "queimando", "envenenado", "imobilizado", "oculto"}
+    if isinstance(raw_token_stats, dict):
+        for raw_token_id, raw_stats in list(raw_token_stats.items())[:160]:
+            token_id = str(raw_token_id)[:80]
+            if (
+                not token_id
+                or not isinstance(raw_stats, dict)
+                or (valid_token_ids is not None and token_id not in valid_token_ids)
+            ):
+                continue
+            try:
+                maximum = min(9999, max(1, int(float(raw_stats.get("max_health", 1)))))
+                current = min(maximum, max(0, int(float(raw_stats.get("current_health", maximum)))))
+            except (TypeError, ValueError):
+                continue
+            raw_conditions = raw_stats.get("conditions", [])
+            conditions = []
+            if isinstance(raw_conditions, list):
+                conditions = [
+                    str(condition)
+                    for condition in raw_conditions
+                    if str(condition) in allowed_conditions
+                ][:12]
+            token_stats[token_id] = {
+                "current_health": current,
+                "max_health": maximum,
+                "conditions": list(dict.fromkeys(conditions)),
+            }
 
     combat_payload = base.get("combat", {})
     if not isinstance(combat_payload, dict):
@@ -464,19 +619,36 @@ def clean_board_state(
             and (valid_token_ids is None or attacker in valid_token_ids)
             and (valid_token_ids is None or target in valid_token_ids)
         ):
+            try:
+                effect_total = min(9999, max(0, int(raw_effect.get("total", 0) or 0)))
+                effect_defense = min(9999, max(0, int(raw_effect.get("defense", 0) or 0)))
+            except (TypeError, ValueError):
+                effect_total, effect_defense = 0, 0
             effect = {
                 "id": str(raw_effect.get("id", ""))[:80] or str(int(time.time() * 1000)),
                 "type": "attack",
                 "attacker": attacker,
                 "target": target,
+                "total": effect_total,
+                "defense": effect_defense,
+                "success": bool(raw_effect.get("success", False)),
             }
 
     return {
-        "grid": {"width": grid_width, "height": grid_height, "blocked": blocked},
+        "grid": {
+            "width": grid_width,
+            "height": grid_height,
+            "blocked": blocked,
+            "doors": doors,
+        },
         "physics_enabled": bool(base.get("physics_enabled", True)),
         "fog_enabled": bool(base.get("fog_enabled", False)),
         "vision_radius": vision_radius,
+        "explored": explored,
         "weather": weather,
+        "lights": lights,
+        "markers": markers,
+        "token_stats": token_stats,
         "combat": {
             "active": bool(combat_payload.get("active", False)) and bool(order),
             "order": order,
@@ -487,13 +659,24 @@ def clean_board_state(
     }
 
 
+def board_blocked_cells(board_state: dict) -> set[int]:
+    grid = board_state.get("grid", {})
+    blocked = {int(index) for index in grid.get("blocked", [])}
+    blocked.update(
+        int(door["index"])
+        for door in grid.get("doors", [])
+        if isinstance(door, dict) and not door.get("open")
+    )
+    return blocked
+
+
 def board_path_is_blocked(start: dict | None, end: dict, board_state: dict) -> bool:
     if not board_state.get("physics_enabled"):
         return False
     grid = board_state.get("grid", {})
     width = int(grid.get("width", 0))
     height = int(grid.get("height", 0))
-    blocked = {int(index) for index in grid.get("blocked", [])}
+    blocked = board_blocked_cells(board_state)
     if not width or not height or not blocked:
         return False
 
@@ -530,6 +713,72 @@ def board_path_is_blocked(start: dict | None, end: dict, board_state: dict) -> b
             error += dx
             y += step_y
     return False
+
+
+def board_visible_cells(
+    board_state: dict,
+    positions: dict,
+    character_ids: set[str],
+) -> set[int]:
+    grid = board_state.get("grid", {})
+    width = int(grid.get("width", 0))
+    height = int(grid.get("height", 0))
+    if not width or not height:
+        return set()
+    blocked = board_blocked_cells(board_state)
+
+    def cell(position: dict) -> tuple[int, int]:
+        return (
+            min(width - 1, max(0, int(float(position["x"]) / 100 * width))),
+            min(height - 1, max(0, int(float(position["y"]) / 100 * height))),
+        )
+
+    def line_clear(source_x: int, source_y: int, target_x: int, target_y: int) -> bool:
+        x, y = source_x, source_y
+        dx = abs(target_x - x)
+        dy = abs(target_y - y)
+        step_x = 1 if x < target_x else -1
+        step_y = 1 if y < target_y else -1
+        error = dx - dy
+        first = True
+        while True:
+            if not first and (x, y) != (target_x, target_y) and y * width + x in blocked:
+                return False
+            if (x, y) == (target_x, target_y):
+                return True
+            first = False
+            double_error = error * 2
+            if double_error > -dy:
+                error -= dy
+                x += step_x
+            if double_error < dx:
+                error += dx
+                y += step_y
+
+    sources: list[tuple[dict, float]] = [
+        (position, float(board_state.get("vision_radius", 5)))
+        for token_id, position in positions.items()
+        if token_id in character_ids and isinstance(position, dict)
+    ]
+    sources.extend(
+        (light, float(light.get("radius", 4)))
+        for light in board_state.get("lights", [])
+        if isinstance(light, dict)
+    )
+    visible: set[int] = set()
+    for position, radius in sources:
+        try:
+            source_x, source_y = cell(position)
+        except (KeyError, TypeError, ValueError):
+            continue
+        radius_int = int(math.ceil(radius))
+        for y in range(max(0, source_y - radius_int), min(height, source_y + radius_int + 1)):
+            for x in range(max(0, source_x - radius_int), min(width, source_x + radius_int + 1)):
+                if math.hypot(x - source_x, y - source_y) > radius + 0.35:
+                    continue
+                if line_clear(source_x, source_y, x, y):
+                    visible.add(y * width + x)
+    return visible
 
 
 def db() -> sqlite3.Connection:
@@ -685,6 +934,19 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campaign_map_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                map_id INTEGER NOT NULL,
+                snapshot TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY(map_id) REFERENCES campaign_maps(id)
+            )
+            """
+        )
 
 
 def hash_password(password: str) -> str:
@@ -742,6 +1004,36 @@ def parse_token(token: str) -> int | None:
         return None
 
 
+def websocket_presence(campaign_id: str) -> list[dict]:
+    with BOARD_WEBSOCKET_LOCK:
+        connections = list(BOARD_WEBSOCKETS.get(str(campaign_id), set()))
+    unique = {}
+    for connection in connections:
+        user_id = getattr(connection, "websocket_user_id", None)
+        username = getattr(connection, "websocket_username", "")
+        if user_id:
+            unique[str(user_id)] = {"user_id": user_id, "username": username}
+    return list(unique.values())
+
+
+def broadcast_board_event(campaign_id: str, payload: dict, exclude: "Handler" | None = None) -> None:
+    with BOARD_WEBSOCKET_LOCK:
+        connections = list(BOARD_WEBSOCKETS.get(str(campaign_id), set()))
+    dead = []
+    for connection in connections:
+        if connection is exclude:
+            continue
+        try:
+            connection.websocket_send_json(payload)
+        except Exception:
+            dead.append(connection)
+    if dead:
+        with BOARD_WEBSOCKET_LOCK:
+            room = BOARD_WEBSOCKETS.get(str(campaign_id), set())
+            for connection in dead:
+                room.discard(connection)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -775,6 +1067,130 @@ class Handler(BaseHTTPRequestHandler):
         if not auth.startswith("Bearer "):
             return None
         return parse_token(auth.removeprefix("Bearer ").strip())
+
+    def websocket_send_frame(self, opcode: int, payload: bytes = b"") -> None:
+        length = len(payload)
+        header = bytearray([0x80 | opcode])
+        if length < 126:
+            header.append(length)
+        elif length < 65536:
+            header.append(126)
+            header.extend(struct.pack("!H", length))
+        else:
+            header.append(127)
+            header.extend(struct.pack("!Q", length))
+        with self.websocket_write_lock:
+            self.wfile.write(bytes(header) + payload)
+            self.wfile.flush()
+
+    def websocket_send_json(self, payload: dict) -> None:
+        self.websocket_send_frame(0x1, json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode())
+
+    def websocket_read_exact(self, length: int) -> bytes:
+        data = b""
+        while len(data) < length:
+            chunk = self.rfile.read(length - len(data))
+            if not chunk:
+                raise ConnectionError("WebSocket encerrado")
+            data += chunk
+        return data
+
+    def campaign_websocket(self, path: str) -> None:
+        campaign_id = path.strip("/").split("/")[1]
+        protocols = [
+            protocol.strip()
+            for protocol in self.headers.get("Sec-WebSocket-Protocol", "").split(",")
+            if protocol.strip()
+        ]
+        token = protocols[1] if len(protocols) > 1 and protocols[0] == "gotrpg" else ""
+        user_id = parse_token(token)
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        if not user_id or not key or self.headers.get("Upgrade", "").lower() != "websocket":
+            return self.send_json(401, {"detail": "WebSocket não autorizado"})
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            user = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not campaign or not user:
+            return self.send_json(404, {"detail": "Campanha não encontrada"})
+
+        accept = base64.b64encode(hashlib.sha1((key + WEBSOCKET_GUID).encode()).digest()).decode()
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.send_header("Sec-WebSocket-Protocol", "gotrpg")
+        self.end_headers()
+
+        self.websocket_write_lock = threading.Lock()
+        self.websocket_user_id = user_id
+        self.websocket_username = user["username"]
+        self.websocket_campaign_id = str(campaign_id)
+        with BOARD_WEBSOCKET_LOCK:
+            BOARD_WEBSOCKETS.setdefault(str(campaign_id), set()).add(self)
+        broadcast_board_event(
+            campaign_id,
+            {"type": "presence", "users": websocket_presence(campaign_id)},
+        )
+        self.websocket_send_json({"type": "connected", "user_id": user_id})
+
+        try:
+            while True:
+                first, second = self.websocket_read_exact(2)
+                opcode = first & 0x0F
+                masked = bool(second & 0x80)
+                length = second & 0x7F
+                if length == 126:
+                    length = struct.unpack("!H", self.websocket_read_exact(2))[0]
+                elif length == 127:
+                    length = struct.unpack("!Q", self.websocket_read_exact(8))[0]
+                if length > 65_536:
+                    break
+                mask = self.websocket_read_exact(4) if masked else b""
+                payload = self.websocket_read_exact(length)
+                if masked:
+                    payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+                if opcode == 0x8:
+                    self.websocket_send_frame(0x8)
+                    break
+                if opcode == 0x9:
+                    self.websocket_send_frame(0xA, payload)
+                    continue
+                if opcode != 0x1:
+                    continue
+                try:
+                    message = json.loads(payload.decode())
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                message_type = str(message.get("type", ""))
+                if message_type == "ping":
+                    self.websocket_send_json({"type": "pong", "at": int(time.time() * 1000)})
+                elif message_type in {"cursor", "measure"}:
+                    try:
+                        x = round(min(100, max(0, float(message.get("x", 0)))), 3)
+                        y = round(min(100, max(0, float(message.get("y", 0)))), 3)
+                    except (TypeError, ValueError):
+                        continue
+                    event = {
+                        "type": message_type,
+                        "user_id": user_id,
+                        "username": user["username"],
+                        "x": x,
+                        "y": y,
+                    }
+                    if message_type == "measure":
+                        event["end_x"] = round(min(100, max(0, float(message.get("end_x", x)))), 3)
+                        event["end_y"] = round(min(100, max(0, float(message.get("end_y", y)))), 3)
+                        event["tool"] = str(message.get("tool", "ruler"))[:20]
+                    broadcast_board_event(campaign_id, event, exclude=self)
+        except Exception:
+            pass
+        finally:
+            with BOARD_WEBSOCKET_LOCK:
+                BOARD_WEBSOCKETS.get(str(campaign_id), set()).discard(self)
+            broadcast_board_event(
+                campaign_id,
+                {"type": "presence", "users": websocket_presence(campaign_id)},
+            )
 
     def do_POST(self) -> None:
         init_db()
@@ -819,8 +1235,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.list_campaigns()
         if path.startswith("/campaigns/invite/"):
             return self.get_campaign_invite(path)
+        if path.startswith("/campaigns/") and path.endswith("/ws"):
+            return self.campaign_websocket(path)
         if path.startswith("/campaigns/") and path.endswith("/board"):
             return self.get_campaign_board(path)
+        if path.startswith("/campaigns/") and "/maps/" in path and path.endswith("/versions"):
+            return self.list_campaign_map_versions(path)
         if path.startswith("/campaigns/") and path.endswith("/enemies"):
             return self.list_campaign_enemies(path)
         if path.startswith("/campaigns/") and path.endswith("/maps"):
@@ -864,6 +1284,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.update_campaign_board(path)
             if path.startswith("/campaigns/") and "/enemies/" in path:
                 return self.update_campaign_enemy(path)
+            if path.startswith("/campaigns/") and "/maps/" in path and path.endswith("/restore"):
+                return self.restore_campaign_map_version(path)
             if path.startswith("/campaigns/") and "/maps/" in path:
                 return self.update_campaign_map(path)
             if path.startswith("/campaigns/"):
@@ -1256,6 +1678,7 @@ class Handler(BaseHTTPRequestHandler):
                 """,
                 (enemy_id,),
             ).fetchone()
+        broadcast_board_event(campaign_id, {"type": "enemies_updated"})
         self.send_json(200, self.enemy_json(row))
 
     def update_campaign_enemy(self, path: str) -> None:
@@ -1312,6 +1735,7 @@ class Handler(BaseHTTPRequestHandler):
                 """,
                 (enemy_id,),
             ).fetchone()
+        broadcast_board_event(campaign_id, {"type": "enemies_updated"})
         self.send_json(200, self.enemy_json(row))
 
     def delete_campaign_enemy(self, path: str) -> None:
@@ -1347,6 +1771,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Inimigo não encontrado"})
+        broadcast_board_event(campaign_id, {"type": "enemies_updated"})
         self.send_json(200, {"deleted": True})
 
     def list_campaign_maps(self, path: str) -> None:
@@ -1453,6 +1878,42 @@ class Handler(BaseHTTPRequestHandler):
             if not cleaned:
                 return self.send_json(400, {"detail": "Dados do mapa inválidos"})
             name, width, height, data = cleaned
+            snapshot = json.dumps(
+                {
+                    "name": existing["name"],
+                    "width": existing["width"],
+                    "height": existing["height"],
+                    **fallback_data,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            latest_version = conn.execute(
+                """
+                SELECT snapshot FROM campaign_map_versions
+                WHERE campaign_id = ? AND map_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (campaign_id, map_id),
+            ).fetchone()
+            if not latest_version or latest_version["snapshot"] != snapshot:
+                conn.execute(
+                    """
+                    INSERT INTO campaign_map_versions (campaign_id, map_id, snapshot, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (campaign_id, map_id, snapshot, now),
+                )
+                conn.execute(
+                    """
+                    DELETE FROM campaign_map_versions
+                    WHERE map_id = ? AND id NOT IN (
+                        SELECT id FROM campaign_map_versions
+                        WHERE map_id = ? ORDER BY id DESC LIMIT 30
+                    )
+                    """,
+                    (map_id, map_id),
+                )
             conn.execute(
                 """
                 UPDATE campaign_maps
@@ -1479,6 +1940,136 @@ class Handler(BaseHTTPRequestHandler):
             ).fetchone()
         self.send_json(200, self.map_json(row))
 
+    def list_campaign_map_versions(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, map_id = parts[1], parts[3]
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            rows = conn.execute(
+                """
+                SELECT id, snapshot, created_at
+                FROM campaign_map_versions
+                WHERE campaign_id = ? AND map_id = ?
+                ORDER BY id DESC LIMIT 30
+                """,
+                (campaign_id, map_id),
+            ).fetchall()
+        versions = []
+        for row in rows:
+            try:
+                snapshot = json.loads(row["snapshot"])
+            except (json.JSONDecodeError, TypeError):
+                snapshot = {}
+            versions.append(
+                {
+                    "id": row["id"],
+                    "created_at": row["created_at"],
+                    "name": snapshot.get("name", "Mapa"),
+                    "width": snapshot.get("width", 0),
+                    "height": snapshot.get("height", 0),
+                }
+            )
+        self.send_json(200, versions)
+
+    def restore_campaign_map_version(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, map_id = parts[1], parts[3]
+        try:
+            version_id = int(self.read_json().get("version_id"))
+        except (TypeError, ValueError):
+            return self.send_json(400, {"detail": "Versão inválida"})
+        now = int(time.time())
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre restaura mapas"})
+            current = conn.execute(
+                """
+                SELECT id, name, width, height, data, created_at
+                FROM campaign_maps WHERE id = ? AND campaign_id = ?
+                """,
+                (map_id, campaign_id),
+            ).fetchone()
+            version = conn.execute(
+                """
+                SELECT snapshot FROM campaign_map_versions
+                WHERE id = ? AND map_id = ? AND campaign_id = ?
+                """,
+                (version_id, map_id, campaign_id),
+            ).fetchone()
+            if not current or not version:
+                return self.send_json(404, {"detail": "Versão não encontrada"})
+            try:
+                target = json.loads(version["snapshot"])
+                current_data = json.loads(current["data"])
+            except (json.JSONDecodeError, TypeError):
+                return self.send_json(400, {"detail": "Versão corrompida"})
+            cleaned = clean_campaign_map(target)
+            if not cleaned:
+                return self.send_json(400, {"detail": "Versão inválida"})
+            name, width, height, data = cleaned
+            current_snapshot = json.dumps(
+                {
+                    "name": current["name"],
+                    "width": current["width"],
+                    "height": current["height"],
+                    **current_data,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            conn.execute(
+                """
+                INSERT INTO campaign_map_versions (campaign_id, map_id, snapshot, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (campaign_id, map_id, current_snapshot, now),
+            )
+            conn.execute(
+                """
+                DELETE FROM campaign_map_versions
+                WHERE map_id = ? AND id NOT IN (
+                    SELECT id FROM campaign_map_versions
+                    WHERE map_id = ? ORDER BY id DESC LIMIT 30
+                )
+                """,
+                (map_id, map_id),
+            )
+            conn.execute(
+                """
+                UPDATE campaign_maps SET name = ?, width = ?, height = ?, data = ?, updated_at = ?
+                WHERE id = ? AND campaign_id = ?
+                """,
+                (
+                    name,
+                    width,
+                    height,
+                    json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                    map_id,
+                    campaign_id,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT id, campaign_id, name, width, height, data, created_at, updated_at
+                FROM campaign_maps WHERE id = ?
+                """,
+                (map_id,),
+            ).fetchone()
+        self.send_json(200, self.map_json(row))
+
     def delete_campaign_map(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
@@ -1492,6 +2083,10 @@ class Handler(BaseHTTPRequestHandler):
             ).fetchone()
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre remove mapas"})
+            conn.execute(
+                "DELETE FROM campaign_map_versions WHERE map_id = ? AND campaign_id = ?",
+                (map_id, campaign_id),
+            )
             cursor = conn.execute(
                 "DELETE FROM campaign_maps WHERE id = ? AND campaign_id = ?",
                 (map_id, campaign_id),
@@ -1671,6 +2266,17 @@ class Handler(BaseHTTPRequestHandler):
                             continue
                     positions[character_id] = candidate
 
+            if board_state.get("fog_enabled"):
+                explored = set(board_state.get("explored", []))
+                explored.update(
+                    board_visible_cells(
+                        board_state,
+                        positions,
+                        set(character_owners),
+                    )
+                )
+                board_state["explored"] = sorted(explored)[:1200]
+
             encoded_positions = json.dumps(positions, separators=(",", ":"))
             encoded_board_state = json.dumps(board_state, separators=(",", ":"))
             cursor = conn.execute(
@@ -1690,6 +2296,14 @@ class Handler(BaseHTTPRequestHandler):
                     """,
                     (campaign_id, map_image, encoded_positions, encoded_board_state, now, user_id),
                 )
+        broadcast_board_event(
+            campaign_id,
+            {
+                "type": "board_updated",
+                "updated_at": now,
+                "updated_by": user_id,
+            },
+        )
         self.send_json(
             200,
             {
@@ -1742,17 +2356,16 @@ class Handler(BaseHTTPRequestHandler):
                 """,
                 (campaign_id, campaign_id),
             )
-        self.send_json(
-            200,
-            {
-                "id": cursor.lastrowid,
-                "notation": notation,
-                "results": results,
-                "total": total,
-                "created_at": now,
-                "username": username,
-            },
-        )
+        response = {
+            "id": cursor.lastrowid,
+            "notation": notation,
+            "results": results,
+            "total": total,
+            "created_at": now,
+            "username": username,
+        }
+        broadcast_board_event(campaign_id, {"type": "dice_roll", "roll": response})
+        self.send_json(200, response)
 
     def update_campaign_diary(self, path: str) -> None:
         user_id = self.user_id()
@@ -1821,6 +2434,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_boards WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_enemies WHERE campaign_id = ?", (campaign_id,))
+            conn.execute("DELETE FROM campaign_map_versions WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_maps WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))

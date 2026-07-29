@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, BookOpen, CloudRain, Copy, Crosshair, Dices, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, Image as ImageIcon, Layers3, LogOut, Map as MapIcon, Minus, Pause, Pencil, Play, Plus, Redo2, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, CircleDashed, CloudRain, Copy, Crosshair, Dices, DoorClosed, DoorOpen, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, History, Image as ImageIcon, Layers3, Lightbulb, LogOut, Map as MapIcon, Minus, MousePointer2, Pause, Pencil, Play, Plus, Redo2, RotateCw, Ruler, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, TriangleAlert, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -855,6 +855,7 @@ const blockingMapObjects = new Set([
   'stone_wall_t', 'masonry_wall_h', 'masonry_wall_v', 'masonry_wall_corner',
   'masonry_wall_t', 'stone_arch', 'wood_gate', 'stone_pillar', 'wood_fence'
 ]);
+const interactiveDoorObjects = new Set(['door', 'wood_gate', 'stone_arch']);
 const mapAssetPaths = {
   terrain: '/map-assets/medieval-terrain.png',
   objects: '/map-assets/medieval-objects.png',
@@ -887,6 +888,7 @@ function newMapDraft(name = 'Novo mapa') {
     height,
     tiles: Array(width * height).fill('grass'),
     objects: {},
+    object_settings: {},
     grid_visible: false,
     time_of_day: 'day',
     brightness: 100
@@ -969,6 +971,7 @@ function buildMapTemplate(template) {
     height,
     tiles,
     objects,
+    object_settings: {},
     grid_visible: false,
     time_of_day: template.time || 'day',
     brightness: template.brightness || 100
@@ -1862,9 +1865,19 @@ async function renderCreatedMap(map) {
     );
   });
 
-  Object.entries(map.objects || {}).forEach(([rawIndex, objectName]) => {
+  const layerOrder = { ground: 0, objects: 1, roof: 2, gm: 3 };
+  Object.entries(map.objects || {})
+    .sort(([indexA], [indexB]) => {
+      const settingA = map.object_settings?.[indexA] || {};
+      const settingB = map.object_settings?.[indexB] || {};
+      return (layerOrder[settingA.layer || 'objects'] - layerOrder[settingB.layer || 'objects'])
+        || ((settingA.elevation || 0) - (settingB.elevation || 0));
+    })
+    .forEach(([rawIndex, objectName]) => {
     const object = mapObjectById[objectName];
     if (!object) return;
+    const setting = map.object_settings?.[rawIndex] || {};
+    if (setting.layer === 'gm') return;
     const index = Number(rawIndex);
     const x = (index % map.width) * cellSize;
     const y = Math.floor(index / map.width) * cellSize;
@@ -1873,17 +1886,26 @@ async function renderCreatedMap(map) {
     const sourceHeight = source.naturalHeight / 4;
     const [column, row] = object.position;
     const overscan = object.wall ? cellSize * .07 : 0;
+    const scale = Math.min(2.5, Math.max(.4, Number(setting.scale) || 1));
+    const rotation = (Number(setting.rotation) || 0) * Math.PI / 180;
+    const centerX = x + cellSize / 2;
+    const centerY = y + cellSize / 2 - (Number(setting.elevation) || 0) * cellSize * .08;
+    context.save();
+    context.translate(centerX, centerY);
+    context.rotate(rotation);
+    context.scale(scale, scale);
     context.drawImage(
       source,
       column * sourceWidth,
       row * sourceHeight,
       sourceWidth,
       sourceHeight,
-      x - overscan,
-      y - overscan,
+      -cellSize / 2 - overscan,
+      -cellSize / 2 - overscan,
       cellSize + overscan * 2,
       cellSize + overscan * 2
     );
+    context.restore();
   });
 
   if (map.grid_visible) {
@@ -1924,7 +1946,7 @@ async function renderCreatedMap(map) {
   context.save();
   context.globalCompositeOperation = 'screen';
   Object.entries(map.objects || {}).forEach(([rawIndex, objectName]) => {
-    if (objectName !== 'fire') return;
+    if (objectName !== 'fire' || map.object_settings?.[rawIndex]?.layer === 'gm') return;
     const index = Number(rawIndex);
     const centerX = (index % map.width) * cellSize + cellSize / 2;
     const centerY = Math.floor(index / map.width) * cellSize + cellSize / 2;
@@ -1952,6 +1974,9 @@ function CampaignMaps({ go, id }) {
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [zoom, setZoom] = useState(1);
+  const [selectedObjectCell, setSelectedObjectCell] = useState(null);
+  const [mapVersions, setMapVersions] = useState([]);
+  const [showVersions, setShowVersions] = useState(false);
   const [painting, setPainting] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -1962,7 +1987,12 @@ function CampaignMaps({ go, id }) {
       .then(([campaignData, mapData]) => {
         setCampaign(campaignData);
         setMaps(mapData);
-        if (mapData.length) setCurrentMap({ ...mapData[0], tiles: [...mapData[0].tiles], objects: { ...mapData[0].objects } });
+        if (mapData.length) setCurrentMap({
+          ...mapData[0],
+          tiles: [...mapData[0].tiles],
+          objects: { ...mapData[0].objects },
+          object_settings: { ...(mapData[0].object_settings || {}) }
+        });
       })
       .catch((err) => setError(err.message));
   }, [id]);
@@ -1987,6 +2017,7 @@ function CampaignMaps({ go, id }) {
       height: map.height,
       tiles: [...map.tiles],
       objects: { ...map.objects },
+      object_settings: { ...(map.object_settings || {}) },
       grid_visible: map.grid_visible,
       time_of_day: map.time_of_day,
       brightness: map.brightness
@@ -2006,7 +2037,13 @@ function CampaignMaps({ go, id }) {
   }
 
   function applySnapshot(mapSnapshot) {
-    setCurrentMap((current) => ({ ...current, ...mapSnapshot, tiles: [...mapSnapshot.tiles], objects: { ...mapSnapshot.objects } }));
+    setCurrentMap((current) => ({
+      ...current,
+      ...mapSnapshot,
+      tiles: [...mapSnapshot.tiles],
+      objects: { ...mapSnapshot.objects },
+      object_settings: { ...(mapSnapshot.object_settings || {}) }
+    }));
     markDirty();
   }
 
@@ -2038,14 +2075,22 @@ function CampaignMaps({ go, id }) {
         return { ...current, tiles };
       }
       const objects = { ...current.objects };
+      const objectSettings = { ...(current.object_settings || {}) };
       if (selectedTool === 'erase') {
         if (!(index in objects)) return current;
         delete objects[index];
+        delete objectSettings[index];
       } else {
         if (objects[index] === selectedTool) return current;
         objects[index] = selectedTool;
+        objectSettings[index] = objectSettings[index] || {
+          rotation: 0,
+          scale: 1,
+          elevation: 0,
+          layer: 'objects'
+        };
       }
-      return { ...current, objects };
+      return { ...current, objects, object_settings: objectSettings };
     });
     markDirty();
   }
@@ -2053,6 +2098,10 @@ function CampaignMaps({ go, id }) {
   function startPainting(event, index) {
     if (!campaign?.is_owner) return;
     event.preventDefault();
+    if (selectedLayer === 'objects' && selectedTool === 'select') {
+      setSelectedObjectCell(currentMap?.objects[index] ? index : null);
+      return;
+    }
     pushHistory();
     paintingRef.current = true;
     setPainting(true);
@@ -2099,7 +2148,7 @@ function CampaignMaps({ go, id }) {
         body: JSON.stringify(newMapDraft(`Mapa ${maps.length + 1}`))
       });
       setMaps((current) => [created, ...current]);
-      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects } });
+      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects }, object_settings: { ...(created.object_settings || {}) } });
       setUndoStack([]);
       setRedoStack([]);
       setDirty(false);
@@ -2118,7 +2167,7 @@ function CampaignMaps({ go, id }) {
         body: JSON.stringify(buildMapTemplate(template))
       });
       setMaps((current) => [created, ...current]);
-      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects } });
+      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects }, object_settings: { ...(created.object_settings || {}) } });
       setUndoStack([]);
       setRedoStack([]);
       setDirty(false);
@@ -2131,7 +2180,8 @@ function CampaignMaps({ go, id }) {
 
   async function selectMap(map) {
     if (dirty) await saveCurrent(false);
-    setCurrentMap({ ...map, tiles: [...map.tiles], objects: { ...map.objects } });
+    setCurrentMap({ ...map, tiles: [...map.tiles], objects: { ...map.objects }, object_settings: { ...(map.object_settings || {}) } });
+    setSelectedObjectCell(null);
     setUndoStack([]);
     setRedoStack([]);
     setDirty(false);
@@ -2146,7 +2196,12 @@ function CampaignMaps({ go, id }) {
       const remaining = maps.filter((item) => item.id !== map.id);
       setMaps(remaining);
       if (currentMap?.id === map.id) {
-        setCurrentMap(remaining.length ? { ...remaining[0], tiles: [...remaining[0].tiles], objects: { ...remaining[0].objects } } : null);
+        setCurrentMap(remaining.length ? {
+          ...remaining[0],
+          tiles: [...remaining[0].tiles],
+          objects: { ...remaining[0].objects },
+          object_settings: { ...(remaining[0].object_settings || {}) }
+        } : null);
       }
     } catch (err) {
       setError(err.message);
@@ -2158,15 +2213,22 @@ function CampaignMaps({ go, id }) {
     pushHistory();
     const tiles = Array(width * height).fill('grass');
     const objects = {};
+    const objectSettings = {};
     for (let y = 0; y < Math.min(height, currentMap.height); y += 1) {
       for (let x = 0; x < Math.min(width, currentMap.width); x += 1) {
         const oldIndex = y * currentMap.width + x;
         const newIndex = y * width + x;
         tiles[newIndex] = currentMap.tiles[oldIndex];
-        if (currentMap.objects[oldIndex]) objects[newIndex] = currentMap.objects[oldIndex];
+        if (currentMap.objects[oldIndex]) {
+          objects[newIndex] = currentMap.objects[oldIndex];
+          if (currentMap.object_settings?.[oldIndex]) {
+            objectSettings[newIndex] = currentMap.object_settings[oldIndex];
+          }
+        }
       }
     }
-    setCurrentMap((current) => ({ ...current, width, height, tiles, objects }));
+    setCurrentMap((current) => ({ ...current, width, height, tiles, objects, object_settings: objectSettings }));
+    setSelectedObjectCell(null);
     markDirty();
   }
 
@@ -2180,8 +2242,67 @@ function CampaignMaps({ go, id }) {
   function clearObjects() {
     if (!currentMap || !Object.keys(currentMap.objects).length) return;
     pushHistory();
-    setCurrentMap((current) => ({ ...current, objects: {} }));
+    setCurrentMap((current) => ({ ...current, objects: {}, object_settings: {} }));
+    setSelectedObjectCell(null);
     markDirty();
+  }
+
+  function updateSelectedObject(patch) {
+    if (selectedObjectCell === null || !currentMap?.objects[selectedObjectCell]) return;
+    pushHistory();
+    setCurrentMap((current) => ({
+      ...current,
+      object_settings: {
+        ...(current.object_settings || {}),
+        [selectedObjectCell]: {
+          rotation: 0,
+          scale: 1,
+          elevation: 0,
+          layer: 'objects',
+          ...(current.object_settings?.[selectedObjectCell] || {}),
+          ...patch
+        }
+      }
+    }));
+    markDirty();
+  }
+
+  async function openMapVersions() {
+    if (!currentMap?.id) return;
+    if (dirty) await saveCurrent(false);
+    try {
+      const versions = await request(`/campaigns/${id}/maps/${currentMap.id}/versions`);
+      setMapVersions(versions);
+      setShowVersions(true);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function restoreMapVersion(versionId) {
+    if (!confirm('Restaurar esta versão do mapa?')) return;
+    try {
+      const restored = await request(`/campaigns/${id}/maps/${currentMap.id}/restore`, {
+        method: 'PUT',
+        body: JSON.stringify({ version_id: versionId })
+      });
+      const prepared = {
+        ...restored,
+        tiles: [...restored.tiles],
+        objects: { ...restored.objects },
+        object_settings: { ...(restored.object_settings || {}) }
+      };
+      setCurrentMap(prepared);
+      setMaps((current) => current.map((map) => map.id === restored.id ? restored : map));
+      setUndoStack([]);
+      setRedoStack([]);
+      setSelectedObjectCell(null);
+      setDirty(false);
+      setSaveStatus('Versão restaurada');
+      setShowVersions(false);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function exportMap() {
@@ -2207,8 +2328,52 @@ function CampaignMaps({ go, id }) {
     try {
       const mapImage = await renderCreatedMap({ ...currentMap, ...saved });
       const blocked = Object.entries(currentMap.objects || {})
-        .filter(([, objectName]) => blockingMapObjects.has(objectName))
+        .filter(([rawIndex, objectName]) => (
+          blockingMapObjects.has(objectName)
+          && !interactiveDoorObjects.has(objectName)
+          && currentMap.object_settings?.[rawIndex]?.layer !== 'gm'
+        ))
         .map(([rawIndex]) => Number(rawIndex));
+      const doors = Object.entries(currentMap.objects || {})
+        .filter(([rawIndex, objectName]) => (
+          interactiveDoorObjects.has(objectName)
+          && currentMap.object_settings?.[rawIndex]?.layer !== 'gm'
+        ))
+        .map(([rawIndex, objectName]) => ({
+          id: `map-door-${rawIndex}`,
+          index: Number(rawIndex),
+          open: false,
+          label: mapObjectById[objectName]?.label || 'Porta'
+        }));
+      const lights = Object.entries(currentMap.objects || {})
+        .filter(([rawIndex, objectName]) => (
+          objectName === 'fire' && currentMap.object_settings?.[rawIndex]?.layer !== 'gm'
+        ))
+        .map(([rawIndex]) => {
+          const index = Number(rawIndex);
+          return {
+            id: `map-fire-${rawIndex}`,
+            x: ((index % currentMap.width) + .5) / currentMap.width * 100,
+            y: (Math.floor(index / currentMap.width) + .5) / currentMap.height * 100,
+            radius: 2,
+            intensity: .82,
+            color: '#ff9d3d',
+            label: 'Fogueira'
+          };
+        });
+      const markers = Object.entries(currentMap.objects || {})
+        .filter(([rawIndex]) => currentMap.object_settings?.[rawIndex]?.layer === 'gm')
+        .map(([rawIndex, objectName]) => {
+          const index = Number(rawIndex);
+          return {
+            id: `map-secret-${rawIndex}`,
+            type: objectName === 'chest' ? 'objective' : 'secret',
+            x: ((index % currentMap.width) + .5) / currentMap.width * 100,
+            y: (Math.floor(index / currentMap.width) + .5) / currentMap.height * 100,
+            label: mapObjectById[objectName]?.label || 'Segredo',
+            hidden: true
+          };
+        });
       await request(`/campaigns/${id}/board`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -2217,9 +2382,13 @@ function CampaignMaps({ go, id }) {
             grid: {
               width: currentMap.width,
               height: currentMap.height,
-              blocked
+              blocked,
+              doors
             },
-            physics_enabled: true
+            physics_enabled: true,
+            explored: [],
+            lights,
+            markers
           }
         })
       });
@@ -2317,6 +2486,7 @@ function CampaignMaps({ go, id }) {
                   }}
                 />
                 <div className="mapHistoryButtons">
+                  <button disabled={!currentMap.id} onClick={openMapVersions} title="Histórico salvo"><History size={18} /></button>
                   <button disabled={!undoStack.length || !campaign?.is_owner} onClick={undo} title="Desfazer"><Undo2 size={18} /></button>
                   <button disabled={!redoStack.length || !campaign?.is_owner} onClick={redo} title="Refazer"><Redo2 size={18} /></button>
                   <span>{saveStatus || (dirty ? 'Alterações pendentes' : 'Salvo')}</span>
@@ -2415,12 +2585,61 @@ function CampaignMaps({ go, id }) {
                       <small>{tool.label}</small>
                     </button>
                   ))}
+                  {selectedLayer === 'objects' && (
+                    <button className={selectedTool === 'select' ? 'active' : ''} onClick={() => setSelectedTool('select')}>
+                      <MousePointer2 size={22} /><small>Ajustar</small>
+                    </button>
+                  )}
                   <button className={selectedTool === 'erase' ? 'active' : ''} onClick={() => setSelectedTool('erase')}>
                     <Eraser size={22} /><small>Borracha</small>
                   </button>
                   {selectedLayer === 'terrain'
                     ? <button className="paletteAction" disabled={selectedTool === 'erase'} onClick={fillTerrain}>Preencher</button>
                     : <button className="paletteAction" onClick={clearObjects}>Limpar</button>}
+                </div>
+              )}
+
+              {campaign?.is_owner && selectedLayer === 'objects' && selectedObjectCell !== null && currentMap.objects[selectedObjectCell] && (
+                <div className="objectTransformBar">
+                  <strong><RotateCw size={16} />Objeto selecionado</strong>
+                  <label>Rotação
+                    <select
+                      value={currentMap.object_settings?.[selectedObjectCell]?.rotation || 0}
+                      onChange={(event) => updateSelectedObject({ rotation: Number(event.target.value) })}
+                    >
+                      {[0, 45, 90, 135, 180, 225, 270, 315].map((value) => <option key={value} value={value}>{value}°</option>)}
+                    </select>
+                  </label>
+                  <label>Tamanho
+                    <input
+                      type="range"
+                      min=".4"
+                      max="2.5"
+                      step=".1"
+                      value={currentMap.object_settings?.[selectedObjectCell]?.scale || 1}
+                      onChange={(event) => updateSelectedObject({ scale: Number(event.target.value) })}
+                    />
+                    <b>{currentMap.object_settings?.[selectedObjectCell]?.scale || 1}×</b>
+                  </label>
+                  <label>Elevação
+                    <select
+                      value={currentMap.object_settings?.[selectedObjectCell]?.elevation || 0}
+                      onChange={(event) => updateSelectedObject({ elevation: Number(event.target.value) })}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </label>
+                  <label>Camada
+                    <select
+                      value={currentMap.object_settings?.[selectedObjectCell]?.layer || 'objects'}
+                      onChange={(event) => updateSelectedObject({ layer: event.target.value })}
+                    >
+                      <option value="ground">Chão</option>
+                      <option value="objects">Objetos</option>
+                      <option value="roof">Telhado</option>
+                      <option value="gm">Secreta do mestre</option>
+                    </select>
+                  </label>
                 </div>
               )}
 
@@ -2432,30 +2651,40 @@ function CampaignMaps({ go, id }) {
                     gridAutoRows: `${Math.round(42 * zoom)}px`
                   }}
                 >
-                  {currentMap.tiles.map((terrain, index) => (
-                    <button
-                      type="button"
-                      aria-label={`Célula ${index + 1}`}
-                      className={`mapCell terrain-${terrain}`}
-                      key={index}
-                      onPointerDown={(event) => startPainting(event, index)}
-                      onPointerEnter={() => continuePainting(index)}
-                    >
-                      {currentMap.objects[index] && (
-                        <span
-                          className={`mapObjectSprite${mapObjectById[currentMap.objects[index]]?.wall ? ' wallSprite' : ''}`}
-                          style={mapSpriteStyle(currentMap.objects[index])}
-                        />
-                      )}
-                    </button>
-                  ))}
+                  {currentMap.tiles.map((terrain, index) => {
+                    const objectSetting = currentMap.object_settings?.[index] || {};
+                    const layerZ = { ground: 1, objects: 2, roof: 3, gm: 4 }[objectSetting.layer || 'objects'];
+                    return (
+                      <button
+                        type="button"
+                        aria-label={`Célula ${index + 1}`}
+                        className={`mapCell terrain-${terrain}${selectedObjectCell === index ? ' selectedObjectCell' : ''}`}
+                        key={index}
+                        onPointerDown={(event) => startPainting(event, index)}
+                        onPointerEnter={() => continuePainting(index)}
+                      >
+                        {currentMap.objects[index] && (
+                          <span
+                            className={`mapObjectSprite${mapObjectById[currentMap.objects[index]]?.wall ? ' wallSprite' : ''}${objectSetting.layer === 'gm' ? ' gmLayerSprite' : ''}`}
+                            style={{
+                              ...mapSpriteStyle(currentMap.objects[index]),
+                              transform: `translateY(-${(objectSetting.elevation || 0) * 8}%) rotate(${objectSetting.rotation || 0}deg) scale(${objectSetting.scale || 1})`,
+                              zIndex: layerZ + (objectSetting.elevation || 0)
+                            }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                   <div className={`mapLighting mapLighting-${currentMap.time_of_day || 'day'}`} />
                   <div
                     className="mapBrightnessOverlay"
                     style={{ background: mapBrightnessColor(currentMap.brightness) }}
                   />
                   {Object.entries(currentMap.objects || {})
-                    .filter(([, objectName]) => objectName === 'fire')
+                    .filter(([rawIndex, objectName]) => (
+                      objectName === 'fire' && currentMap.object_settings?.[rawIndex]?.layer !== 'gm'
+                    ))
                     .map(([rawIndex]) => {
                       const index = Number(rawIndex);
                       const cellPixels = Math.round(42 * zoom);
@@ -2474,6 +2703,26 @@ function CampaignMaps({ go, id }) {
                     })}
                 </div>
               </div>
+              {showVersions && (
+                <div className="mapVersionsOverlay" onClick={() => setShowVersions(false)}>
+                  <div className="mapVersionsPanel" onClick={(event) => event.stopPropagation()}>
+                    <div>
+                      <h2><History size={20} />Histórico do mapa</h2>
+                      <button onClick={() => setShowVersions(false)}><X size={17} /></button>
+                    </div>
+                    {mapVersions.map((version) => (
+                      <button key={version.id} onClick={() => restoreMapVersion(version.id)}>
+                        <span>
+                          <strong>{new Date(version.created_at * 1000).toLocaleString('pt-BR')}</strong>
+                          <small>{version.name} · {version.width} × {version.height}</small>
+                        </span>
+                        Restaurar
+                      </button>
+                    ))}
+                    {!mapVersions.length && <p>Nenhuma versão anterior salva.</p>}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>
@@ -2819,12 +3068,39 @@ function normalizeBoardState(value = {}) {
     grid: {
       width,
       height,
-      blocked: Array.isArray(grid.blocked) ? grid.blocked.map(Number).filter(Number.isFinite) : []
+      blocked: Array.isArray(grid.blocked) ? grid.blocked.map(Number).filter(Number.isFinite) : [],
+      doors: Array.isArray(grid.doors)
+        ? grid.doors.map((door) => ({
+          id: String(door.id),
+          index: Number(door.index),
+          open: Boolean(door.open),
+          label: String(door.label || 'Porta')
+        }))
+        : []
     },
     physics_enabled: value.physics_enabled !== false,
     fog_enabled: Boolean(value.fog_enabled),
     vision_radius: Math.max(1, Math.min(12, Number(value.vision_radius) || 5)),
+    explored: Array.isArray(value.explored) ? value.explored.map(Number).filter(Number.isFinite) : [],
     weather: ['clear', 'rain', 'snow', 'mist', 'storm'].includes(value.weather) ? value.weather : 'clear',
+    lights: Array.isArray(value.lights) ? value.lights.map((light) => ({
+      id: String(light.id),
+      x: Number(light.x),
+      y: Number(light.y),
+      radius: Number(light.radius) || 4,
+      intensity: Number(light.intensity) || .75,
+      color: light.color || '#ffb347',
+      label: light.label || 'Luz'
+    })) : [],
+    markers: Array.isArray(value.markers) ? value.markers.map((marker) => ({
+      id: String(marker.id),
+      type: marker.type || 'secret',
+      x: Number(marker.x),
+      y: Number(marker.y),
+      label: marker.label || 'Marcador',
+      hidden: marker.hidden !== false
+    })) : [],
+    token_stats: value.token_stats && typeof value.token_stats === 'object' ? value.token_stats : {},
     combat: {
       active: Boolean(combat.active),
       order: Array.isArray(combat.order)
@@ -2837,6 +3113,14 @@ function normalizeBoardState(value = {}) {
       effect: combat.effect || null
     }
   };
+}
+
+function effectiveBoardBlocked(boardState) {
+  const blocked = new Set(boardState.grid.blocked);
+  boardState.grid.doors.forEach((door) => {
+    if (!door.open) blocked.add(door.index);
+  });
+  return blocked;
 }
 
 function gridCellFromPosition(position, width, height) {
@@ -2880,7 +3164,7 @@ function boardMoveIsBlocked(from, to, tokenId, positions, boardState) {
   if (!boardState.physics_enabled) return false;
   const { width, height, blocked: blockedCells } = boardState.grid;
   if (!width || !height) return false;
-  const blocked = new Set(blockedCells);
+  const blocked = effectiveBoardBlocked(boardState);
   if (gridLineIsBlocked(from, to, width, height, blocked)) return true;
   const targetCell = gridCellFromPosition(to, width, height);
   return Object.entries(positions).some(([otherId, otherPosition]) => {
@@ -2916,12 +3200,12 @@ function hasGridLineOfSight(sourceX, sourceY, targetX, targetY, width, blocked) 
 }
 
 function visibleBoardCells(boardState, sourcePositions) {
-  const { width, height, blocked: blockedCells } = boardState.grid;
+  const { width, height } = boardState.grid;
   if (!width || !height) return [];
-  const radius = boardState.vision_radius;
-  const blocked = new Set(blockedCells);
+  const blocked = effectiveBoardBlocked(boardState);
   const visible = new Set();
   sourcePositions.forEach((position) => {
+    const radius = Number(position.vision_radius) || boardState.vision_radius;
     const source = gridCellFromPosition(position, width, height);
     for (let y = Math.max(0, source.y - radius); y <= Math.min(height - 1, source.y + radius); y += 1) {
       for (let x = Math.max(0, source.x - radius); x <= Math.min(width - 1, source.x + radius); x += 1) {
@@ -2939,6 +3223,8 @@ function CampaignBoard({ go, id }) {
   const boardRef = useRef(null);
   const draggingRef = useRef(null);
   const moveSyncRef = useRef(0);
+  const websocketRef = useRef(null);
+  const cursorSyncRef = useRef(0);
   const collisionTimerRef = useRef(null);
   const [campaign, setCampaign] = useState(null);
   const [enemies, setEnemies] = useState([]);
@@ -2957,6 +3243,14 @@ function CampaignBoard({ go, id }) {
   const [selectedTarget, setSelectedTarget] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncedAt, setSyncedAt] = useState(null);
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [presence, setPresence] = useState([]);
+  const [remoteCursors, setRemoteCursors] = useState({});
+  const [boardTool, setBoardTool] = useState('move');
+  const [measurement, setMeasurement] = useState(null);
+  const [selectedTokenId, setSelectedTokenId] = useState('');
+  const [selectedLightId, setSelectedLightId] = useState('');
+  const [selectedMarkerId, setSelectedMarkerId] = useState('');
   const [error, setError] = useState('');
 
   function applyBoard(data, includePositions = true) {
@@ -2989,19 +3283,71 @@ function CampaignBoard({ go, id }) {
   }, [id]);
 
   useEffect(() => {
+    let disposed = false;
+    let retryTimer;
+    const connect = () => {
+      const token = localStorage.getItem('gotrpg_token');
+      if (!token || disposed) return;
+      const apiUrl = new URL(API, location.origin);
+      apiUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      apiUrl.pathname = `${apiUrl.pathname.replace(/\/$/, '')}/campaigns/${id}/ws`;
+      const socket = new WebSocket(apiUrl.toString(), ['gotrpg', token]);
+      websocketRef.current = socket;
+      socket.onopen = () => setLiveConnected(true);
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'board_updated') {
+            request(`/campaigns/${id}/board`)
+              .then((boardData) => applyBoard(boardData, !draggingRef.current))
+              .catch(() => {});
+          } else if (message.type === 'dice_roll' && message.roll) {
+            setRolls((current) => [message.roll, ...current.filter((roll) => roll.id !== message.roll.id)].slice(0, 30));
+          } else if (message.type === 'enemies_updated') {
+            request(`/campaigns/${id}/enemies`).then(setEnemies).catch(() => {});
+          } else if (message.type === 'presence') {
+            setPresence(message.users || []);
+          } else if (message.type === 'cursor') {
+            setRemoteCursors((current) => ({
+              ...current,
+              [message.user_id]: { ...message, at: Date.now() }
+            }));
+          }
+        } catch {
+          // Mensagem inválida é ignorada.
+        }
+      };
+      socket.onclose = () => {
+        setLiveConnected(false);
+        if (!disposed) retryTimer = setTimeout(connect, 1600);
+      };
+      socket.onerror = () => socket.close();
+    };
+    connect();
+
     const boardInterval = setInterval(() => {
       request(`/campaigns/${id}/board`)
         .then((boardData) => {
           applyBoard(boardData, !draggingRef.current);
         })
         .catch(() => {});
-    }, 900);
+    }, 12000);
     const enemyInterval = setInterval(() => {
       request(`/campaigns/${id}/enemies`).then(setEnemies).catch(() => {});
-    }, 3500);
+    }, 12000);
+    const cursorInterval = setInterval(() => {
+      const cutoff = Date.now() - 5000;
+      setRemoteCursors((current) => Object.fromEntries(
+        Object.entries(current).filter(([, cursor]) => cursor.at > cutoff)
+      ));
+    }, 2500);
     return () => {
+      disposed = true;
+      clearTimeout(retryTimer);
+      websocketRef.current?.close();
       clearInterval(boardInterval);
       clearInterval(enemyInterval);
+      clearInterval(cursorInterval);
     };
   }, [id]);
 
@@ -3024,7 +3370,89 @@ function CampaignBoard({ go, id }) {
     };
   }
 
+  function boardPointFromPointer(event) {
+    const rect = boardRef.current.getBoundingClientRect();
+    return {
+      x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100))
+    };
+  }
+
+  function sendLiveMessage(message) {
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      websocketRef.current.send(JSON.stringify(message));
+    }
+  }
+
+  function handleBoardPointerDown(event) {
+    if (event.target.closest('.characterToken, .boardDoor, .boardMarker, .boardLight')) return;
+    const point = boardPointFromPointer(event);
+    if (boardTool === 'ruler' || boardTool === 'area') {
+      event.preventDefault();
+      setMeasurement({ tool: boardTool, start: point, end: point, active: true });
+    } else if (boardTool === 'light' && campaign?.is_owner) {
+      const light = {
+        id: `light-${Date.now()}`,
+        x: point.x,
+        y: point.y,
+        radius: 4,
+        intensity: .75,
+        color: '#ffb347',
+        label: 'Luz'
+      };
+      setSelectedLightId(light.id);
+      saveBoardState({ lights: [...boardState.lights, light] });
+      setBoardTool('move');
+    } else if (boardTool === 'trap' && campaign?.is_owner) {
+      const marker = {
+        id: `marker-${Date.now()}`,
+        type: 'trap',
+        x: point.x,
+        y: point.y,
+        label: 'Armadilha',
+        hidden: true
+      };
+      setSelectedMarkerId(marker.id);
+      saveBoardState({ markers: [...boardState.markers, marker] });
+      setBoardTool('move');
+    } else {
+      setSelectedTokenId('');
+      setSelectedLightId('');
+      setSelectedMarkerId('');
+    }
+  }
+
+  function handleBoardPointerMove(event) {
+    if (!boardRef.current) return;
+    const point = boardPointFromPointer(event);
+    if (measurement?.active) {
+      setMeasurement((current) => current ? { ...current, end: point } : current);
+    }
+    const now = Date.now();
+    if (now - cursorSyncRef.current > 70) {
+      cursorSyncRef.current = now;
+      sendLiveMessage({ type: 'cursor', ...point });
+    }
+  }
+
+  function handleBoardPointerUp(event) {
+    if (!measurement?.active) return;
+    const end = boardPointFromPointer(event);
+    const completed = { ...measurement, end, active: false };
+    setMeasurement(completed);
+    sendLiveMessage({
+      type: 'measure',
+      tool: completed.tool,
+      x: completed.start.x,
+      y: completed.start.y,
+      end_x: end.x,
+      end_y: end.y
+    });
+  }
+
   function startTokenDrag(event, tokenId, movable) {
+    event.stopPropagation();
+    setSelectedTokenId(String(tokenId));
     if (!movable) return;
     event.preventDefault();
     draggingRef.current = { id: String(tokenId), pointerId: event.pointerId };
@@ -3105,6 +3533,85 @@ function CampaignBoard({ go, id }) {
     }
   }
 
+  function toggleDoor(doorId) {
+    saveBoardState({
+      grid: {
+        doors: boardState.grid.doors.map((door) => (
+          door.id === doorId ? { ...door, open: !door.open } : door
+        ))
+      }
+    });
+  }
+
+  function updateLight(lightId, patch) {
+    saveBoardState({
+      lights: boardState.lights.map((light) => light.id === lightId ? { ...light, ...patch } : light)
+    });
+  }
+
+  function removeLight(lightId) {
+    saveBoardState({ lights: boardState.lights.filter((light) => light.id !== lightId) });
+    setSelectedLightId('');
+  }
+
+  function updateMarker(markerId, patch) {
+    saveBoardState({
+      markers: boardState.markers.map((marker) => marker.id === markerId ? { ...marker, ...patch } : marker)
+    });
+  }
+
+  function removeMarker(markerId) {
+    saveBoardState({ markers: boardState.markers.filter((marker) => marker.id !== markerId) });
+    setSelectedMarkerId('');
+  }
+
+  function tokenStats(tokenId) {
+    const stored = boardState.token_stats[tokenId];
+    if (stored) return stored;
+    const token = tokenById[tokenId];
+    const maximum = token?.enemy
+      ? Number(token.source?.health) || 1
+      : Math.max(1, Number(token?.source?.data?.saude) || 1);
+    const current = token?.enemy ? Number(token.source?.current_health) || maximum : maximum;
+    return { current_health: current, max_health: maximum, conditions: [] };
+  }
+
+  async function changeTokenHealth(tokenId, delta) {
+    const current = tokenStats(tokenId);
+    const next = {
+      ...current,
+      current_health: Math.min(current.max_health, Math.max(0, current.current_health + delta))
+    };
+    await saveBoardState({
+      token_stats: { ...boardState.token_stats, [tokenId]: next }
+    });
+    if (tokenId.startsWith('enemy:')) {
+      const enemyId = tokenId.split(':')[1];
+      try {
+        const savedEnemy = await request(`/campaigns/${id}/enemies/${enemyId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ current_health: next.current_health })
+        });
+        setEnemies((currentEnemies) => currentEnemies.map((enemy) => enemy.id === savedEnemy.id ? savedEnemy : enemy));
+      } catch {
+        // A vida da mesa permanece salva mesmo se a ficha do inimigo falhar.
+      }
+    }
+  }
+
+  function toggleTokenCondition(tokenId, condition) {
+    const current = tokenStats(tokenId);
+    const conditions = current.conditions.includes(condition)
+      ? current.conditions.filter((item) => item !== condition)
+      : [...current.conditions, condition];
+    saveBoardState({
+      token_stats: {
+        ...boardState.token_stats,
+        [tokenId]: { ...current, conditions }
+      }
+    });
+  }
+
   async function uploadMap(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -3117,7 +3624,12 @@ function CampaignBoard({ go, id }) {
         method: 'PUT',
         body: JSON.stringify({
           map_image: preparedImage,
-          board_state: { grid: { width: 24, height: 14, blocked: [] } }
+          board_state: {
+            grid: { width: 24, height: 14, blocked: [], doors: [] },
+            explored: [],
+            lights: [],
+            markers: []
+          }
         })
       });
       applyBoard(saved);
@@ -3136,7 +3648,13 @@ function CampaignBoard({ go, id }) {
         method: 'PUT',
         body: JSON.stringify({
           map_image: '',
-          board_state: { grid: { width: 0, height: 0, blocked: [] }, fog_enabled: false }
+          board_state: {
+            grid: { width: 0, height: 0, blocked: [], doors: [] },
+            fog_enabled: false,
+            explored: [],
+            lights: [],
+            markers: []
+          }
         })
       });
       setMapImage('');
@@ -3170,18 +3688,33 @@ function CampaignBoard({ go, id }) {
   }
 
   const tokenCatalog = useMemo(() => [
-    ...(campaign?.characters || []).map((character) => ({
-      id: String(character.id),
-      name: character.name,
-      enemy: false,
-      user_id: character.user_id
-    })),
-    ...enemies.map((enemy) => ({
-      id: `enemy:${enemy.id}`,
-      name: enemy.name,
-      enemy: true,
-      user_id: null
-    }))
+    ...(campaign?.characters || []).map((character) => {
+      const abilities = character.data?.habilidades || {};
+      const grade = (name) => Number(abilities[name]?.grau) || 0;
+      return {
+        id: String(character.id),
+        name: character.name,
+        enemy: false,
+        user_id: character.user_id,
+        source: character,
+        initiative_bonus: grade('Agilidade'),
+        attack_dice: Math.max(1, grade('Luta'), grade('Pontaria')),
+        defense: Math.max(1, Number(character.data?.combate) || 6)
+      };
+    }),
+    ...enemies.map((enemy) => {
+      const attackMatch = String(enemy.attack || '').match(/(\d+)\s*D/i);
+      return {
+        id: `enemy:${enemy.id}`,
+        name: enemy.name,
+        enemy: true,
+        user_id: null,
+        source: enemy,
+        initiative_bonus: Math.max(0, Math.floor((Number(enemy.movement) || 3) / 2)),
+        attack_dice: Math.max(1, Number(attackMatch?.[1]) || 3),
+        defense: Math.max(1, Number(enemy.combat_defense) || 6)
+      };
+    })
   ], [campaign, enemies]);
 
   const tokenById = useMemo(
@@ -3196,7 +3729,10 @@ function CampaignBoard({ go, id }) {
 
   async function startCombat() {
     const order = tokenCatalog
-      .map((token) => ({ id: token.id, initiative: Math.floor(Math.random() * 20) + 1 }))
+      .map((token) => ({
+        id: token.id,
+        initiative: Math.floor(Math.random() * 6) + 1 + token.initiative_bonus
+      }))
       .sort((a, b) => b.initiative - a.initiative);
     if (!order.length) return;
     setSelectedTarget(order[1]?.id || '');
@@ -3226,13 +3762,31 @@ function CampaignBoard({ go, id }) {
       ? selectedTarget
       : tokenCatalog.find((token) => token.id !== attacker)?.id;
     if (!attacker || !target) return;
+    const attackerData = tokenById[attacker];
+    const targetData = tokenById[target];
+    if (!attackerData || !targetData) return;
+    let result;
+    try {
+      result = await request(`/campaigns/${id}/rolls`, {
+        method: 'POST',
+        body: JSON.stringify({ sides: 6, quantity: Math.min(20, attackerData.attack_dice) })
+      });
+      setLastRoll(result);
+      setRolls((current) => [result, ...current.filter((roll) => roll.id !== result.id)].slice(0, 30));
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
     await saveBoardState({
       combat: {
         effect: {
           id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
           type: 'attack',
           attacker,
-          target
+          target,
+          total: result.total,
+          defense: targetData.defense,
+          success: result.total >= targetData.defense
         }
       }
     });
@@ -3246,9 +3800,25 @@ function CampaignBoard({ go, id }) {
     ? tokenCatalog.filter((token) => !token.enemy)
     : tokenCatalog.filter((token) => !token.enemy && token.user_id === campaign?.current_user_id);
   const visionCells = useMemo(
-    () => visibleBoardCells(boardState, visionTokens.map((token) => tokenPosition(token.id))),
+    () => visibleBoardCells(boardState, [
+      ...visionTokens.map((token) => tokenPosition(token.id)),
+      ...boardState.lights.map((light) => ({ ...light, vision_radius: light.radius }))
+    ]),
     [boardState, visionTokens, positions]
   );
+  const knownFogCells = useMemo(
+    () => [...new Set([...boardState.explored, ...visionCells])],
+    [boardState.explored, visionCells]
+  );
+  const measurementSquares = measurement
+    ? Math.hypot(
+      (measurement.end.x - measurement.start.x) / 100 * (boardState.grid.width || 24),
+      (measurement.end.y - measurement.start.y) / 100 * (boardState.grid.height || 14)
+    )
+    : 0;
+  const selectedLight = boardState.lights.find((light) => light.id === selectedLightId);
+  const selectedMarker = boardState.markers.find((marker) => marker.id === selectedMarkerId);
+  const selectedToken = tokenById[selectedTokenId];
 
   useEffect(() => {
     if (!activeTokenId) return;
@@ -3287,9 +3857,24 @@ function CampaignBoard({ go, id }) {
       <div className="battleLayout">
         <section className="mapPanel">
           <div className="boardControlBar">
-            <span className={`liveSync${syncing ? ' syncing' : ''}`}>
-              <i />{syncing ? 'Sincronizando...' : syncedAt ? 'Mesa sincronizada' : 'Conectando...'}
+            <span
+              className={`liveSync${syncing ? ' syncing' : ''}`}
+              title={presence.map((user) => user.username).join(', ')}
+            >
+              <i />{syncing ? 'Sincronizando...' : liveConnected ? `${presence.length || 1} online` : syncedAt ? 'Reconectando...' : 'Conectando...'}
             </span>
+            <div className="boardPlayTools">
+              <button className={boardTool === 'move' ? 'active' : ''} onClick={() => setBoardTool('move')} title="Mover"><MousePointer2 size={16} /></button>
+              <button className={boardTool === 'ruler' ? 'active' : ''} onClick={() => setBoardTool('ruler')} title="Medir distância"><Ruler size={16} /></button>
+              <button className={boardTool === 'area' ? 'active' : ''} onClick={() => setBoardTool('area')} title="Área circular"><CircleDashed size={16} /></button>
+              {measurement && <button onClick={() => setMeasurement(null)} title="Limpar medição"><X size={16} /></button>}
+              {campaign?.is_owner && (
+                <>
+                  <button className={boardTool === 'light' ? 'active' : ''} onClick={() => setBoardTool('light')} title="Adicionar luz"><Lightbulb size={16} /></button>
+                  <button className={boardTool === 'trap' ? 'active' : ''} onClick={() => setBoardTool('trap')} title="Adicionar armadilha"><TriangleAlert size={16} /></button>
+                </>
+              )}
+            </div>
             {campaign?.is_owner && (
               <div className="boardMasterTools">
                 <button
@@ -3307,6 +3892,11 @@ function CampaignBoard({ go, id }) {
                   {boardState.fog_enabled ? <EyeOff size={16} /> : <Eye size={16} />}
                   Névoa
                 </button>
+                {boardState.explored.length > 0 && (
+                  <button onClick={() => saveBoardState({ explored: [] })} title="Apagar memória explorada">
+                    <Eraser size={16} />Explorado
+                  </button>
+                )}
                 <label><Crosshair size={15} />Visão
                   <select
                     value={boardState.vision_radius}
@@ -3343,6 +3933,10 @@ function CampaignBoard({ go, id }) {
                 ? { aspectRatio: `${boardState.grid.width} / ${boardState.grid.height}` }
                 : {})
             }}
+            onPointerDown={handleBoardPointerDown}
+            onPointerMove={handleBoardPointerMove}
+            onPointerUp={handleBoardPointerUp}
+            onPointerLeave={handleBoardPointerUp}
           >
             {!mapImage && (
               <div className="emptyMap">
@@ -3357,6 +3951,7 @@ function CampaignBoard({ go, id }) {
               const movable = canMove(character);
               const attacking = attackEffect?.attacker === tokenId;
               const hit = attackEffect?.target === tokenId;
+              const stats = tokenStats(tokenId);
               return (
                 <button
                   type="button"
@@ -3375,6 +3970,8 @@ function CampaignBoard({ go, id }) {
                       : <span>{character.name.slice(0, 2).toUpperCase()}</span>}
                   </span>
                   <span className="tokenName">{character.name}</span>
+                  <span className="tokenHealth">{stats.current_health}/{stats.max_health}</span>
+                  {stats.conditions.length > 0 && <span className="tokenConditions">{stats.conditions.length}</span>}
                 </button>
               );
             })}
@@ -3383,6 +3980,7 @@ function CampaignBoard({ go, id }) {
               const position = positions[tokenId] || defaultPosition((campaign?.characters.length || 0) + index);
               const attacking = attackEffect?.attacker === tokenId;
               const hit = attackEffect?.target === tokenId;
+              const stats = tokenStats(tokenId);
               return (
                 <button
                   type="button"
@@ -3397,39 +3995,169 @@ function CampaignBoard({ go, id }) {
                 >
                   <span className="tokenPortrait"><Skull size={27} /></span>
                   <span className="tokenName">{enemy.name}</span>
-                  <span className="tokenHealth">{enemy.current_health}/{enemy.health}</span>
+                  <span className="tokenHealth">{stats.current_health}/{stats.max_health}</span>
+                  {stats.conditions.length > 0 && <span className="tokenConditions">{stats.conditions.length}</span>}
                 </button>
               );
             })}
-            {boardState.fog_enabled && boardState.grid.width > 0 && boardState.grid.height > 0 && (
-              <svg
-                className={`battleFog${campaign?.is_owner ? ' masterPreview' : ''}`}
-                viewBox={`0 0 ${boardState.grid.width} ${boardState.grid.height}`}
-                preserveAspectRatio="none"
-                aria-hidden="true"
+            {boardState.lights.map((light) => {
+              const width = light.radius * 2 / (boardState.grid.width || 24) * 100;
+              const height = light.radius * 2 / (boardState.grid.height || 14) * 100;
+              return (
+                <button
+                  type="button"
+                  className={`boardLight${selectedLightId === light.id ? ' selected' : ''}`}
+                  key={light.id}
+                  style={{
+                    left: `${light.x - width / 2}%`,
+                    top: `${light.y - height / 2}%`,
+                    width: `${width}%`,
+                    height: `${height}%`,
+                    opacity: light.intensity,
+                    background: `radial-gradient(ellipse, ${light.color}bb 0, ${light.color}55 36%, transparent 72%)`
+                  }}
+                  title={light.label}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    if (campaign?.is_owner) setSelectedLightId(light.id);
+                  }}
+                >
+                  {campaign?.is_owner && <Lightbulb size={15} />}
+                </button>
+              );
+            })}
+            {boardState.grid.doors.map((door) => {
+              const x = ((door.index % boardState.grid.width) + .5) / boardState.grid.width * 100;
+              const y = (Math.floor(door.index / boardState.grid.width) + .5) / boardState.grid.height * 100;
+              return (
+                <button
+                  type="button"
+                  className={`boardDoor${door.open ? ' open' : ' closed'}`}
+                  key={door.id}
+                  style={{ left: `${x}%`, top: `${y}%` }}
+                  title={`${door.label} — ${door.open ? 'aberta' : 'fechada'}`}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    if (campaign?.is_owner) toggleDoor(door.id);
+                  }}
+                >
+                  {door.open ? <DoorOpen size={19} /> : <DoorClosed size={19} />}
+                </button>
+              );
+            })}
+            {boardState.markers
+              .filter((marker) => campaign?.is_owner || !marker.hidden)
+              .map((marker) => (
+                <button
+                  type="button"
+                  className={`boardMarker marker-${marker.type}${marker.hidden ? ' hiddenMarker' : ''}${selectedMarkerId === marker.id ? ' selected' : ''}`}
+                  key={marker.id}
+                  style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+                  title={marker.label}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    if (campaign?.is_owner) setSelectedMarkerId(marker.id);
+                  }}
+                >
+                  <TriangleAlert size={19} />
+                </button>
+              ))}
+            {Object.values(remoteCursors).map((cursor) => (
+              <div
+                className="remoteCursor"
+                key={cursor.user_id}
+                style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
               >
-                <defs>
-                  <mask id={`battle-fog-${id}`}>
-                    <rect width={boardState.grid.width} height={boardState.grid.height} fill="white" />
-                    {visionCells.map((cellIndex) => (
-                      <rect
-                        key={cellIndex}
-                        x={(cellIndex % boardState.grid.width) - .03}
-                        y={Math.floor(cellIndex / boardState.grid.width) - .03}
-                        width="1.06"
-                        height="1.06"
-                        rx=".13"
-                        fill="black"
-                      />
-                    ))}
-                  </mask>
-                </defs>
-                <rect
-                  width={boardState.grid.width}
-                  height={boardState.grid.height}
-                  mask={`url(#battle-fog-${id})`}
-                />
-              </svg>
+                <MousePointer2 size={18} />
+                <span>{cursor.username}</span>
+              </div>
+            ))}
+            {measurement && (
+              <>
+                <svg className="measurementLayer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  {measurement.tool === 'ruler' ? (
+                    <line
+                      x1={measurement.start.x}
+                      y1={measurement.start.y}
+                      x2={measurement.end.x}
+                      y2={measurement.end.y}
+                    />
+                  ) : (
+                    <ellipse
+                      cx={measurement.start.x}
+                      cy={measurement.start.y}
+                      rx={measurementSquares / (boardState.grid.width || 24) * 100}
+                      ry={measurementSquares / (boardState.grid.height || 14) * 100}
+                    />
+                  )}
+                </svg>
+                <span
+                  className="measurementLabel"
+                  style={{ left: `${measurement.end.x}%`, top: `${measurement.end.y}%` }}
+                >
+                  {measurementSquares.toFixed(1)} quadrados
+                </span>
+              </>
+            )}
+            {boardState.fog_enabled && boardState.grid.width > 0 && boardState.grid.height > 0 && (
+              <>
+                <svg
+                  className={`battleFog${campaign?.is_owner ? ' masterPreview' : ''}`}
+                  viewBox={`0 0 ${boardState.grid.width} ${boardState.grid.height}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <mask id={`battle-fog-${id}`}>
+                      <rect width={boardState.grid.width} height={boardState.grid.height} fill="white" />
+                      {knownFogCells.map((cellIndex) => (
+                        <rect
+                          key={cellIndex}
+                          x={(cellIndex % boardState.grid.width) - .03}
+                          y={Math.floor(cellIndex / boardState.grid.width) - .03}
+                          width="1.06"
+                          height="1.06"
+                          rx=".13"
+                          fill="black"
+                        />
+                      ))}
+                    </mask>
+                  </defs>
+                  <rect
+                    width={boardState.grid.width}
+                    height={boardState.grid.height}
+                    mask={`url(#battle-fog-${id})`}
+                  />
+                </svg>
+                <svg
+                  className="battleFog exploredShade"
+                  viewBox={`0 0 ${boardState.grid.width} ${boardState.grid.height}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <mask id={`battle-current-vision-${id}`}>
+                      <rect width={boardState.grid.width} height={boardState.grid.height} fill="white" />
+                      {visionCells.map((cellIndex) => (
+                        <rect
+                          key={cellIndex}
+                          x={(cellIndex % boardState.grid.width) - .03}
+                          y={Math.floor(cellIndex / boardState.grid.width) - .03}
+                          width="1.06"
+                          height="1.06"
+                          rx=".13"
+                          fill="black"
+                        />
+                      ))}
+                    </mask>
+                  </defs>
+                  <rect
+                    width={boardState.grid.width}
+                    height={boardState.grid.height}
+                    mask={`url(#battle-current-vision-${id})`}
+                  />
+                </svg>
+              </>
             )}
             {attackEffect?.attacker && attackEffect?.target && (
               <svg
@@ -3525,9 +4253,108 @@ function CampaignBoard({ go, id }) {
                     <button className="attackButton" onClick={animateAttack}><Zap size={16} />Atacar</button>
                   </div>
                 )}
+                {attackEffect?.total > 0 && (
+                  <p className={`attackResult${attackEffect.success ? ' success' : ' failure'}`}>
+                    {attackEffect.success ? 'Acerto' : 'Falha'}: {attackEffect.total} contra defesa {attackEffect.defense}
+                  </p>
+                )}
               </>
             )}
           </div>
+
+          {campaign?.is_owner && selectedToken && (
+            <div className="tacticalInspector">
+              <div className="inspectorTitle">
+                <Heart size={18} />
+                <strong>{selectedToken.name}</strong>
+                <button onClick={() => setSelectedTokenId('')}><X size={15} /></button>
+              </div>
+              <div className="boardHealthControl">
+                <button onClick={() => changeTokenHealth(selectedToken.id, -1)}><Minus size={16} />Dano</button>
+                <b>{tokenStats(selectedToken.id).current_health}/{tokenStats(selectedToken.id).max_health}</b>
+                <button onClick={() => changeTokenHealth(selectedToken.id, 1)}><Plus size={16} />Cura</button>
+              </div>
+              <div className="conditionGrid">
+                {[
+                  ['caido', 'Caído'],
+                  ['atordoado', 'Atordoado'],
+                  ['cego', 'Cego'],
+                  ['queimando', 'Queimando'],
+                  ['envenenado', 'Envenenado'],
+                  ['imobilizado', 'Imobilizado'],
+                  ['oculto', 'Oculto']
+                ].map(([condition, label]) => (
+                  <button
+                    className={tokenStats(selectedToken.id).conditions.includes(condition) ? 'active' : ''}
+                    key={condition}
+                    onClick={() => toggleTokenCondition(selectedToken.id, condition)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {campaign?.is_owner && selectedLight && (
+            <div className="tacticalInspector">
+              <div className="inspectorTitle">
+                <Lightbulb size={18} />
+                <strong>{selectedLight.label}</strong>
+                <button onClick={() => setSelectedLightId('')}><X size={15} /></button>
+              </div>
+              <label>Alcance
+                <input
+                  type="range"
+                  min="1"
+                  max="12"
+                  step=".5"
+                  value={selectedLight.radius}
+                  onChange={(event) => updateLight(selectedLight.id, { radius: Number(event.target.value) })}
+                />
+                <b>{selectedLight.radius}</b>
+              </label>
+              <label>Intensidade
+                <input
+                  type="range"
+                  min=".1"
+                  max="1"
+                  step=".1"
+                  value={selectedLight.intensity}
+                  onChange={(event) => updateLight(selectedLight.id, { intensity: Number(event.target.value) })}
+                />
+              </label>
+              <label>Cor
+                <input type="color" value={selectedLight.color} onChange={(event) => updateLight(selectedLight.id, { color: event.target.value })} />
+              </label>
+              <button className="dangerAction" onClick={() => removeLight(selectedLight.id)}><Trash2 size={15} />Remover luz</button>
+            </div>
+          )}
+
+          {campaign?.is_owner && selectedMarker && (
+            <div className="tacticalInspector">
+              <div className="inspectorTitle">
+                <TriangleAlert size={18} />
+                <strong>Marcador secreto</strong>
+                <button onClick={() => setSelectedMarkerId('')}><X size={15} /></button>
+              </div>
+              <label>Nome
+                <input value={selectedMarker.label} onChange={(event) => updateMarker(selectedMarker.id, { label: event.target.value })} />
+              </label>
+              <label>Tipo
+                <select value={selectedMarker.type} onChange={(event) => updateMarker(selectedMarker.id, { type: event.target.value })}>
+                  <option value="trap">Armadilha</option>
+                  <option value="secret">Segredo</option>
+                  <option value="objective">Objetivo</option>
+                </select>
+              </label>
+              <button className={selectedMarker.hidden ? '' : 'active'} onClick={() => updateMarker(selectedMarker.id, { hidden: !selectedMarker.hidden })}>
+                {selectedMarker.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                {selectedMarker.hidden ? 'Oculto dos jogadores' : 'Revelado aos jogadores'}
+              </button>
+              <button className="dangerAction" onClick={() => removeMarker(selectedMarker.id)}><Trash2 size={15} />Remover marcador</button>
+            </div>
+          )}
 
           <div className="diceTitle">
             <Dices size={25} />
