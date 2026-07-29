@@ -795,10 +795,39 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
                 created_at INTEGER NOT NULL
             )
             """
         )
+        user_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "role" not in user_columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
+            )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at INTEGER NOT NULL
+            )
+            """
+        )
+        promotion = conn.execute(
+            "SELECT name FROM app_migrations WHERE name = ?",
+            ("promote_viniduarte_superadmin_v1",),
+        ).fetchone()
+        if not promotion:
+            conn.execute(
+                "UPDATE users SET role = 'superadmin' WHERE lower(username) = 'viniduarte'"
+            )
+            conn.execute(
+                "INSERT INTO app_migrations (name, applied_at) VALUES (?, ?)",
+                ("promote_viniduarte_superadmin_v1", int(time.time())),
+            )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS characters (
@@ -1342,7 +1371,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
             user = conn.execute(
-                "SELECT id, username, created_at FROM users WHERE id = ?",
+                "SELECT id, username, role, created_at FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
             total = conn.execute(
@@ -1356,6 +1385,7 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "id": user["id"],
                 "username": user["username"],
+                "role": user["role"],
                 "created_at": user["created_at"],
                 "characters_count": total["total"],
             },
@@ -1366,10 +1396,20 @@ class Handler(BaseHTTPRequestHandler):
         if not user_id:
             return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
-            rows = conn.execute(
-                "SELECT id, name, updated_at FROM characters WHERE user_id = ? ORDER BY updated_at DESC",
-                (user_id,),
-            ).fetchall()
+            if self.is_superadmin(conn, user_id):
+                rows = conn.execute(
+                    """
+                    SELECT ch.id, ch.name, ch.updated_at, u.username AS owner_username
+                    FROM characters ch
+                    JOIN users u ON u.id = ch.user_id
+                    ORDER BY ch.updated_at DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, name, updated_at FROM characters WHERE user_id = ? ORDER BY updated_at DESC",
+                    (user_id,),
+                ).fetchall()
         self.send_json(200, [dict(row) for row in rows])
 
     def create_character(self) -> None:
@@ -1395,16 +1435,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessário"})
         character_id = path.rsplit("/", 1)[-1]
         with db() as conn:
-            row = conn.execute(
-                """
-                SELECT DISTINCT ch.*
-                FROM characters ch
-                LEFT JOIN campaign_characters cc ON cc.character_id = ch.id
-                LEFT JOIN campaign_members cm ON cm.campaign_id = cc.campaign_id AND cm.user_id = ?
-                WHERE ch.id = ? AND (ch.user_id = ? OR cm.user_id IS NOT NULL)
-                """,
-                (user_id, character_id, user_id),
-            ).fetchone()
+            superadmin = self.is_superadmin(conn, user_id)
+            if superadmin:
+                row = conn.execute(
+                    "SELECT * FROM characters WHERE id = ?",
+                    (character_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT DISTINCT ch.*
+                    FROM characters ch
+                    LEFT JOIN campaign_characters cc ON cc.character_id = ch.id
+                    LEFT JOIN campaign_members cm ON cm.campaign_id = cc.campaign_id AND cm.user_id = ?
+                    WHERE ch.id = ? AND (ch.user_id = ? OR cm.user_id IS NOT NULL)
+                    """,
+                    (user_id, character_id, user_id),
+                ).fetchone()
         if not row:
             return self.send_json(404, {"detail": "Personagem não encontrado"})
         self.send_json(
@@ -1413,7 +1460,7 @@ class Handler(BaseHTTPRequestHandler):
                 "id": row["id"],
                 "name": row["name"],
                 "user_id": row["user_id"],
-                "can_edit": row["user_id"] == user_id,
+                "can_edit": superadmin or row["user_id"] == user_id,
                 "data": json.loads(row["data"]),
             },
         )
@@ -1428,9 +1475,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"detail": "Dados inválidos ou peso excedido"})
         name = str(data.get("nome") or "Sem nome").strip()[:120]
         with db() as conn:
+            superadmin = self.is_superadmin(conn, user_id)
             row = conn.execute(
-                "SELECT data FROM characters WHERE id = ? AND user_id = ?",
-                (character_id, user_id),
+                "SELECT data FROM characters WHERE id = ? AND (? OR user_id = ?)",
+                (character_id, superadmin, user_id),
             ).fetchone()
             if not row:
                 return self.send_json(404, {"detail": "Personagem não encontrado"})
@@ -1439,8 +1487,15 @@ class Handler(BaseHTTPRequestHandler):
             if current_archetype:
                 data["arquetipo"] = current_archetype
             cursor = conn.execute(
-                "UPDATE characters SET name = ?, data = ?, updated_at = ? WHERE id = ? AND user_id = ?",
-                (name, json.dumps(data, ensure_ascii=False), int(time.time()), character_id, user_id),
+                "UPDATE characters SET name = ?, data = ?, updated_at = ? WHERE id = ? AND (? OR user_id = ?)",
+                (
+                    name,
+                    json.dumps(data, ensure_ascii=False),
+                    int(time.time()),
+                    character_id,
+                    superadmin,
+                    user_id,
+                ),
             )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Personagem não encontrado"})
@@ -1452,15 +1507,50 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessário"})
         character_id = path.rsplit("/", 1)[-1]
         with db() as conn:
+            superadmin = self.is_superadmin(conn, user_id)
             cursor = conn.execute(
-                "DELETE FROM characters WHERE id = ? AND user_id = ?",
-                (character_id, user_id),
+                "DELETE FROM characters WHERE id = ? AND (? OR user_id = ?)",
+                (character_id, superadmin, user_id),
             )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Personagem não encontrado"})
         self.send_json(200, {"deleted": True})
 
+    def is_superadmin(self, conn: sqlite3.Connection, user_id: int) -> bool:
+        user = conn.execute(
+            "SELECT role FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        return bool(user and user["role"] == "superadmin")
+
+    def campaign_manage_access(
+        self,
+        conn: sqlite3.Connection,
+        campaign_id: str,
+        user_id: int,
+    ) -> sqlite3.Row | None:
+        campaign = conn.execute(
+            "SELECT * FROM campaigns WHERE id = ?",
+            (campaign_id,),
+        ).fetchone()
+        if campaign and (
+            campaign["owner_id"] == user_id
+            or self.is_superadmin(conn, user_id)
+        ):
+            return campaign
+        return None
+
     def campaign_access(self, conn: sqlite3.Connection, campaign_id: str, user_id: int) -> sqlite3.Row | None:
+        if self.is_superadmin(conn, user_id):
+            return conn.execute(
+                """
+                SELECT c.*, u.username AS owner_username
+                FROM campaigns c
+                JOIN users u ON u.id = c.owner_id
+                WHERE c.id = ?
+                """,
+                (campaign_id,),
+            ).fetchone()
         return conn.execute(
             """
             SELECT c.*, u.username AS owner_username
@@ -1508,26 +1598,43 @@ class Handler(BaseHTTPRequestHandler):
         if not user_id:
             return self.send_json(401, {"detail": "Login necessário"})
         with db() as conn:
-            rows = conn.execute(
-                """
-                SELECT c.id, c.name, c.description, c.invite_code, c.owner_id, c.updated_at,
-                       u.username AS owner_username,
-                       COUNT(DISTINCT cm.user_id) AS members_count,
-                       COUNT(DISTINCT cc.character_id) AS characters_count
-                FROM campaigns c
-                JOIN users u ON u.id = c.owner_id
-                LEFT JOIN campaign_members own ON own.campaign_id = c.id AND own.user_id = ?
-                LEFT JOIN campaign_members cm ON cm.campaign_id = c.id
-                LEFT JOIN campaign_characters cc ON cc.campaign_id = c.id
-                WHERE c.owner_id = ? OR own.user_id IS NOT NULL
-                GROUP BY c.id
-                ORDER BY c.updated_at DESC
-                """,
-                (user_id, user_id),
-            ).fetchall()
+            superadmin = self.is_superadmin(conn, user_id)
+            if superadmin:
+                rows = conn.execute(
+                    """
+                    SELECT c.id, c.name, c.description, c.invite_code, c.owner_id, c.updated_at,
+                           u.username AS owner_username,
+                           COUNT(DISTINCT cm.user_id) AS members_count,
+                           COUNT(DISTINCT cc.character_id) AS characters_count
+                    FROM campaigns c
+                    JOIN users u ON u.id = c.owner_id
+                    LEFT JOIN campaign_members cm ON cm.campaign_id = c.id
+                    LEFT JOIN campaign_characters cc ON cc.campaign_id = c.id
+                    GROUP BY c.id
+                    ORDER BY c.updated_at DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT c.id, c.name, c.description, c.invite_code, c.owner_id, c.updated_at,
+                           u.username AS owner_username,
+                           COUNT(DISTINCT cm.user_id) AS members_count,
+                           COUNT(DISTINCT cc.character_id) AS characters_count
+                    FROM campaigns c
+                    JOIN users u ON u.id = c.owner_id
+                    LEFT JOIN campaign_members own ON own.campaign_id = c.id AND own.user_id = ?
+                    LEFT JOIN campaign_members cm ON cm.campaign_id = c.id
+                    LEFT JOIN campaign_characters cc ON cc.campaign_id = c.id
+                    WHERE c.owner_id = ? OR own.user_id IS NOT NULL
+                    GROUP BY c.id
+                    ORDER BY c.updated_at DESC
+                    """,
+                    (user_id, user_id),
+                ).fetchall()
         campaigns = [dict(row) for row in rows]
         for campaign in campaigns:
-            campaign["is_owner"] = campaign["owner_id"] == user_id
+            campaign["is_owner"] = superadmin or campaign["owner_id"] == user_id
         self.send_json(200, campaigns)
 
     def create_campaign(self) -> None:
@@ -1564,6 +1671,10 @@ class Handler(BaseHTTPRequestHandler):
             campaign = self.campaign_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
+            can_manage = (
+                campaign["owner_id"] == user_id
+                or self.is_superadmin(conn, user_id)
+            )
             members = conn.execute(
                 """
                 SELECT u.id, u.username, cm.joined_at
@@ -1602,7 +1713,7 @@ class Handler(BaseHTTPRequestHandler):
                 "invite_code": campaign["invite_code"],
                 "owner_id": campaign["owner_id"],
                 "owner_username": campaign["owner_username"],
-                "is_owner": campaign["owner_id"] == user_id,
+                "is_owner": can_manage,
                 "current_user_id": user_id,
                 "diary": {
                     "session_number": 1,
@@ -1655,10 +1766,7 @@ class Handler(BaseHTTPRequestHandler):
         name, data, current_health = cleaned
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre cria inimigos"})
             cursor = conn.execute(
@@ -1690,10 +1798,7 @@ class Handler(BaseHTTPRequestHandler):
         payload = self.read_json()
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre altera inimigos"})
             existing = conn.execute(
@@ -1745,10 +1850,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         campaign_id, enemy_id = parts[1], parts[3]
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre remove inimigos"})
             cursor = conn.execute(
@@ -1805,10 +1907,7 @@ class Handler(BaseHTTPRequestHandler):
         name, width, height, data = cleaned
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre cria mapas"})
             cursor = conn.execute(
@@ -1848,10 +1947,7 @@ class Handler(BaseHTTPRequestHandler):
         payload = self.read_json()
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre altera mapas"})
             existing = conn.execute(
@@ -1988,10 +2084,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"detail": "Versão inválida"})
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre restaura mapas"})
             current = conn.execute(
@@ -2077,10 +2170,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         campaign_id, map_id = parts[1], parts[3]
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(403, {"detail": "Apenas o mestre remove mapas"})
             conn.execute(
@@ -2170,7 +2260,10 @@ class Handler(BaseHTTPRequestHandler):
             campaign = self.campaign_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
-            is_owner = campaign["owner_id"] == user_id
+            is_owner = (
+                campaign["owner_id"] == user_id
+                or self.is_superadmin(conn, user_id)
+            )
             current = conn.execute(
                 "SELECT map_image, token_positions, board_state FROM campaign_boards WHERE campaign_id = ?",
                 (campaign_id,),
@@ -2389,10 +2482,7 @@ class Handler(BaseHTTPRequestHandler):
         content = str(self.read_json().get("content", ""))[:12000]
         now = int(time.time())
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
             cursor = conn.execute(
@@ -2425,9 +2515,12 @@ class Handler(BaseHTTPRequestHandler):
         if not name:
             return self.send_json(400, {"detail": "Nome obrigatório"})
         with db() as conn:
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
             cursor = conn.execute(
-                "UPDATE campaigns SET name = ?, description = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
-                (name, description, int(time.time()), campaign_id, user_id),
+                "UPDATE campaigns SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+                (name, description, int(time.time()), campaign_id),
             )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Campanha não encontrada"})
@@ -2439,10 +2532,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(401, {"detail": "Login necessário"})
         campaign_id = path.strip("/").split("/")[1]
         with db() as conn:
-            campaign = conn.execute(
-                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
-                (campaign_id, user_id),
-            ).fetchone()
+            campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
             conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
@@ -2495,9 +2585,10 @@ class Handler(BaseHTTPRequestHandler):
         character_id = str(self.read_json().get("character_id", ""))
         with db() as conn:
             campaign = self.campaign_access(conn, campaign_id, user_id)
+            superadmin = self.is_superadmin(conn, user_id)
             character = conn.execute(
-                "SELECT id FROM characters WHERE id = ? AND user_id = ?",
-                (character_id, user_id),
+                "SELECT id FROM characters WHERE id = ? AND (? OR user_id = ?)",
+                (character_id, superadmin, user_id),
             ).fetchone()
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
@@ -2523,17 +2614,19 @@ class Handler(BaseHTTPRequestHandler):
             campaign = self.campaign_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
-            cursor = conn.execute(
-                """
-                DELETE FROM campaign_characters
-                WHERE campaign_id = ? AND character_id = ? AND (
-                    added_by = ? OR EXISTS (
-                        SELECT 1 FROM campaigns WHERE id = ? AND owner_id = ?
-                    )
+            if self.campaign_manage_access(conn, campaign_id, user_id):
+                cursor = conn.execute(
+                    "DELETE FROM campaign_characters WHERE campaign_id = ? AND character_id = ?",
+                    (campaign_id, character_id),
                 )
-                """,
-                (campaign_id, character_id, user_id, campaign_id, user_id),
-            )
+            else:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM campaign_characters
+                    WHERE campaign_id = ? AND character_id = ? AND added_by = ?
+                    """,
+                    (campaign_id, character_id, user_id),
+                )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Ficha não encontrada na campanha"})
         self.send_json(200, {"deleted": True})

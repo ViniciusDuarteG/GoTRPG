@@ -1168,6 +1168,7 @@ function Profile() {
         {profile && (
           <div className="profileStats">
             <div><span>Usuário</span><strong>{profile.username}</strong></div>
+            <div><span>Acesso</span><strong>{profile.role === 'superadmin' ? 'Superadmin' : 'Jogador'}</strong></div>
             <div><span>Conta criada</span><strong>{createdAt}</strong></div>
             <div><span>Personagens</span><strong>{profile.characters_count}</strong></div>
           </div>
