@@ -25,6 +25,18 @@ SECRET_KEY = os.environ.get("GOTRPG_SECRET_KEY") or secrets.token_hex(32)
 TOKEN_TTL = 60 * 60 * 24 * 7
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAP_TERRAINS = {
+    "grass", "forest", "dirt", "stone", "sand", "water", "snow", "mud",
+    "wood", "lava", "flagstone", "mossstone",
+}
+MAP_OBJECTS = {
+    "tree", "pine", "rock", "bush", "house", "tower", "wall", "door",
+    "bridge", "camp", "fire", "chest", "barrel", "table", "ruins", "stairs", "well",
+    "wood_wall_h", "wood_wall_v", "wood_wall_corner", "wood_wall_t",
+    "stone_wall_h", "stone_wall_v", "stone_wall_corner", "stone_wall_t",
+    "masonry_wall_h", "masonry_wall_v", "masonry_wall_corner", "masonry_wall_t",
+    "stone_arch", "wood_gate", "stone_pillar", "wood_fence",
+}
 ARMOR_STATS = {
     "Roupas": {"defense": 0, "movement": 0},
     "Robes": {"defense": 0, "movement": 0},
@@ -325,6 +337,55 @@ def clean_enemy_data(payload: object, fallback: dict | None = None) -> tuple[str
     return name, data, current_health
 
 
+def clean_campaign_map(payload: object, fallback: dict | None = None) -> tuple[str, int, int, dict] | None:
+    if not isinstance(payload, dict):
+        return None
+    base = dict(fallback or {})
+    base.update(payload)
+    name = str(base.get("name", "")).strip()[:120]
+    if not name:
+        return None
+    try:
+        width = min(40, max(12, int(base.get("width", 24))))
+        height = min(30, max(8, int(base.get("height", 14))))
+    except (TypeError, ValueError):
+        return None
+    cell_count = width * height
+    tiles = base.get("tiles", [])
+    if not isinstance(tiles, list):
+        tiles = []
+    clean_tiles = [
+        str(tiles[index]) if index < len(tiles) and str(tiles[index]) in MAP_TERRAINS else "grass"
+        for index in range(cell_count)
+    ]
+    objects = base.get("objects", {})
+    if not isinstance(objects, dict):
+        objects = {}
+    clean_objects = {}
+    for raw_index, raw_object in objects.items():
+        try:
+            index = int(raw_index)
+        except (TypeError, ValueError):
+            continue
+        object_name = str(raw_object)
+        if 0 <= index < cell_count and object_name in MAP_OBJECTS:
+            clean_objects[str(index)] = object_name
+    try:
+        brightness = min(115, max(20, int(base.get("brightness", 100))))
+    except (TypeError, ValueError):
+        brightness = 100
+    data = {
+        "tiles": clean_tiles,
+        "objects": clean_objects,
+        "grid_visible": bool(base.get("grid_visible", True)),
+        "time_of_day": str(base.get("time_of_day", "day"))
+        if str(base.get("time_of_day", "day")) in {"dawn", "day", "dusk", "night"}
+        else "day",
+        "brightness": brightness,
+    }
+    return name, width, height, data
+
+
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -452,6 +513,23 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campaign_maps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                data TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY(created_by) REFERENCES users(id)
+            )
+            """
+        )
 
 
 def hash_password(password: str) -> str:
@@ -561,6 +639,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.roll_campaign_dice(path)
             if path.startswith("/campaigns/") and path.endswith("/enemies"):
                 return self.create_campaign_enemy(path)
+            if path.startswith("/campaigns/") and path.endswith("/maps"):
+                return self.create_campaign_map(path)
             if path.startswith("/campaigns/") and path.endswith("/characters"):
                 return self.add_campaign_character(path)
             self.send_json(404, {"detail": "Rota não encontrada"})
@@ -588,6 +668,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.get_campaign_board(path)
         if path.startswith("/campaigns/") and path.endswith("/enemies"):
             return self.list_campaign_enemies(path)
+        if path.startswith("/campaigns/") and path.endswith("/maps"):
+            return self.list_campaign_maps(path)
         if path.startswith("/campaigns/"):
             return self.get_campaign(path)
         self.send_json(404, {"detail": "Rota não encontrada"})
@@ -627,6 +709,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.update_campaign_board(path)
             if path.startswith("/campaigns/") and "/enemies/" in path:
                 return self.update_campaign_enemy(path)
+            if path.startswith("/campaigns/") and "/maps/" in path:
+                return self.update_campaign_map(path)
             if path.startswith("/campaigns/"):
                 return self.update_campaign(path)
             self.send_json(404, {"detail": "Rota não encontrada"})
@@ -642,6 +726,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.remove_campaign_character(path)
         if path.startswith("/campaigns/") and "/enemies/" in path:
             return self.delete_campaign_enemy(path)
+        if path.startswith("/campaigns/") and "/maps/" in path:
+            return self.delete_campaign_map(path)
         if path.startswith("/campaigns/"):
             return self.delete_campaign(path)
         self.send_json(404, {"detail": "Rota não encontrada"})
@@ -819,6 +905,22 @@ class Handler(BaseHTTPRequestHandler):
             "campaign_id": row["campaign_id"],
             "name": row["name"],
             "current_health": row["current_health"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            **data,
+        }
+
+    def map_json(self, row: sqlite3.Row) -> dict:
+        try:
+            data = json.loads(row["data"])
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        return {
+            "id": row["id"],
+            "campaign_id": row["campaign_id"],
+            "name": row["name"],
+            "width": row["width"],
+            "height": row["height"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             **data,
@@ -1090,6 +1192,157 @@ class Handler(BaseHTTPRequestHandler):
                 )
         if cursor.rowcount == 0:
             return self.send_json(404, {"detail": "Inimigo não encontrado"})
+        self.send_json(200, {"deleted": True})
+
+    def list_campaign_maps(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            rows = conn.execute(
+                """
+                SELECT id, campaign_id, name, width, height, data, created_at, updated_at
+                FROM campaign_maps
+                WHERE campaign_id = ?
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (campaign_id,),
+            ).fetchall()
+        self.send_json(200, [self.map_json(row) for row in rows])
+
+    def create_campaign_map(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        cleaned = clean_campaign_map(self.read_json())
+        if not cleaned:
+            return self.send_json(400, {"detail": "Dados do mapa inválidos"})
+        name, width, height, data = cleaned
+        now = int(time.time())
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre cria mapas"})
+            cursor = conn.execute(
+                """
+                INSERT INTO campaign_maps
+                    (campaign_id, created_by, name, width, height, data, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    campaign_id,
+                    user_id,
+                    name,
+                    width,
+                    height,
+                    json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                    now,
+                ),
+            )
+            map_id = int(cursor.lastrowid)
+            row = conn.execute(
+                """
+                SELECT id, campaign_id, name, width, height, data, created_at, updated_at
+                FROM campaign_maps
+                WHERE id = ?
+                """,
+                (map_id,),
+            ).fetchone()
+        self.send_json(200, self.map_json(row))
+
+    def update_campaign_map(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, map_id = parts[1], parts[3]
+        payload = self.read_json()
+        now = int(time.time())
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre altera mapas"})
+            existing = conn.execute(
+                """
+                SELECT id, campaign_id, name, width, height, data, created_at, updated_at
+                FROM campaign_maps
+                WHERE id = ? AND campaign_id = ?
+                """,
+                (map_id, campaign_id),
+            ).fetchone()
+            if not existing:
+                return self.send_json(404, {"detail": "Mapa não encontrado"})
+            try:
+                fallback_data = json.loads(existing["data"])
+            except (json.JSONDecodeError, TypeError):
+                fallback_data = {}
+            fallback = {
+                "name": existing["name"],
+                "width": existing["width"],
+                "height": existing["height"],
+                **fallback_data,
+            }
+            cleaned = clean_campaign_map(payload, fallback)
+            if not cleaned:
+                return self.send_json(400, {"detail": "Dados do mapa inválidos"})
+            name, width, height, data = cleaned
+            conn.execute(
+                """
+                UPDATE campaign_maps
+                SET name = ?, width = ?, height = ?, data = ?, updated_at = ?
+                WHERE id = ? AND campaign_id = ?
+                """,
+                (
+                    name,
+                    width,
+                    height,
+                    json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                    map_id,
+                    campaign_id,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT id, campaign_id, name, width, height, data, created_at, updated_at
+                FROM campaign_maps
+                WHERE id = ?
+                """,
+                (map_id,),
+            ).fetchone()
+        self.send_json(200, self.map_json(row))
+
+    def delete_campaign_map(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, map_id = parts[1], parts[3]
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre remove mapas"})
+            cursor = conn.execute(
+                "DELETE FROM campaign_maps WHERE id = ? AND campaign_id = ?",
+                (map_id, campaign_id),
+            )
+        if cursor.rowcount == 0:
+            return self.send_json(404, {"detail": "Mapa não encontrado"})
         self.send_json(200, {"deleted": True})
 
     def get_campaign_board(self, path: str) -> None:
@@ -1364,6 +1617,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_boards WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_enemies WHERE campaign_id = ?", (campaign_id,))
+            conn.execute("DELETE FROM campaign_maps WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?", (campaign_id,))

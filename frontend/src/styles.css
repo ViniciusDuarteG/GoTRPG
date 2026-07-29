@@ -664,6 +664,555 @@ textarea {
   color: #f8ead0;
 }
 
+.mapCreatorPage {
+  width: min(1580px, calc(100% - 24px));
+  margin: 0 auto;
+  padding: 26px 0 48px;
+}
+
+.mapCreatorHeader {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.mapCreatorHeader h1 {
+  margin: 2px 0 0;
+  font-family: Cinzel, serif;
+  font-size: clamp(30px, 4vw, 48px);
+}
+
+.mapCreatorHeader .kicker {
+  margin: 14px 0 0;
+}
+
+.mapCreatorLayout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.savedMapsPanel,
+.mapEditorPanel {
+  border: 1px solid #8b5a2d;
+  border-radius: 10px;
+  background: rgba(20, 11, 7, .97);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, .34);
+}
+
+.savedMapsPanel {
+  position: sticky;
+  top: 90px;
+  padding: 13px;
+}
+
+.savedMapsTitle {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.savedMapsTitle h2 {
+  margin: 0;
+  font-family: Cinzel, serif;
+  font-size: 18px;
+}
+
+.savedMapsTitle span {
+  color: #aa926b;
+  font-size: 11px;
+}
+
+.savedMapsTitle button {
+  width: 36px;
+  min-height: 34px;
+  padding: 5px;
+}
+
+.savedMapList {
+  display: grid;
+  gap: 7px;
+}
+
+.savedMapItem {
+  position: relative;
+  border: 1px solid #624027;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #26150f;
+}
+
+.savedMapItem.active {
+  border-color: #e0b35f;
+  box-shadow: inset 0 0 0 1px #a47736;
+}
+
+.savedMapItem > button:first-child {
+  width: 100%;
+  min-height: 58px;
+  padding: 7px 40px 7px 7px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.savedMapItem > button:first-child:hover {
+  background: rgba(124, 79, 39, .25);
+}
+
+.savedMapItem i {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 4px;
+  display: block;
+}
+
+.savedMapItem span {
+  min-width: 0;
+  display: grid;
+}
+
+.savedMapItem strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.savedMapItem small {
+  color: #aa926b;
+}
+
+.mapDeleteButton {
+  position: absolute;
+  top: 13px;
+  right: 6px;
+  width: 30px;
+  min-height: 30px;
+  padding: 4px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.mapEmptyList {
+  padding: 20px 6px;
+  color: #aa926b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.mapTemplateSection {
+  margin-top: 16px;
+  padding-top: 13px;
+  border-top: 1px solid #5c3b25;
+}
+
+.mapTemplateTitle {
+  margin-bottom: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.mapTemplateTitle span {
+  color: #e6c17e;
+  font-family: Cinzel, serif;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mapTemplateTitle small {
+  color: #8f795d;
+  font-size: 9px;
+}
+
+.mapTemplateList {
+  display: grid;
+  gap: 6px;
+}
+
+.mapTemplateList button {
+  min-height: 57px;
+  padding: 6px;
+  border-color: #573822;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.mapTemplateList button:hover {
+  border-color: #b78142;
+  background: #382016;
+}
+
+.mapTemplateList button > i {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 50%;
+}
+
+.mapTemplateList button > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mapTemplateList strong {
+  color: #ead3a3;
+  font-size: 10px;
+}
+
+.mapTemplateList small {
+  color: #9f896a;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+.mapTemplateList svg {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #d6a95a;
+}
+
+.mapEditorPanel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.emptyMapEditor {
+  min-height: 640px;
+  color: #aa926b;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+}
+
+.emptyMapEditor h2 {
+  margin: 0;
+  font-family: Cinzel, serif;
+}
+
+.mapDocumentBar {
+  min-height: 64px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #704727;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mapNameInput {
+  width: min(440px, 55%);
+  border-color: transparent;
+  background: transparent;
+  color: #fff0d0;
+  font-family: Cinzel, serif;
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.mapNameInput:focus {
+  border-color: #9f6a35;
+  background: #f7e6bd;
+  color: #24130b;
+}
+
+.mapHistoryButtons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mapHistoryButtons button {
+  width: 36px;
+  min-height: 34px;
+  padding: 5px;
+}
+
+.mapHistoryButtons span {
+  min-width: 116px;
+  color: #aa926b;
+  font-size: 11px;
+  text-align: right;
+}
+
+.mapEditorToolbar {
+  padding: 10px 14px;
+  border-bottom: 1px solid #704727;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #1c0f0a;
+}
+
+.layerTabs,
+.mapViewTools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layerTabs button,
+.mapViewTools button {
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+.layerTabs button.active,
+.mapViewTools button.active {
+  border-color: #d6a95a;
+  background: #69130f;
+}
+
+.mapViewTools label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #aa926b;
+  font-size: 10px;
+}
+
+.mapViewTools select {
+  width: 66px;
+  padding: 6px;
+}
+
+.mapViewTools .mapTimeSelect select {
+  width: 108px;
+}
+
+.mapBrightness input {
+  width: 92px;
+  accent-color: #d8aa59;
+}
+
+.mapBrightness b {
+  width: 30px;
+  color: #dfc18a;
+  font-size: 9px;
+  text-align: right;
+}
+
+.mapViewTools > span {
+  width: 42px;
+  color: #d4b985;
+  font-size: 10px;
+  text-align: center;
+}
+
+.mapPalette {
+  padding: 10px 14px;
+  border-bottom: 1px solid #704727;
+  overflow-x: auto;
+  display: flex;
+  gap: 7px;
+  background: #28160f;
+}
+
+.mapPalette button {
+  flex: 0 0 62px;
+  min-height: 62px;
+  padding: 5px;
+  border-color: #654329;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.mapPalette button.active {
+  border-color: #f0c875;
+  background: #701610;
+  box-shadow: inset 0 0 0 1px #b78038;
+}
+
+.mapPalette button i,
+.mapPalette button > span:not(.mapObjectThumb) {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+.mapPalette button small {
+  font-size: 9px;
+}
+
+.mapPalette .paletteAction {
+  flex-basis: 76px;
+  align-content: center;
+  color: #e6bd72;
+  font-size: 10px;
+}
+
+.mapCanvasViewport {
+  min-height: 560px;
+  max-height: calc(100vh - 292px);
+  padding: 28px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at center, rgba(110, 75, 42, .18), transparent 55%),
+    #110a07;
+}
+
+.mapCanvas {
+  position: relative;
+  width: max-content;
+  margin: auto;
+  border: 8px solid #4b2a18;
+  outline: 1px solid #a16b36;
+  display: inline-grid;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, .65);
+  user-select: none;
+}
+
+.mapCell {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.mapCell:hover {
+  border: 0;
+  filter: brightness(1.18);
+}
+
+.mapCanvas.showGrid .mapCell {
+  box-shadow: inset -1px -1px rgba(31, 20, 12, .35);
+}
+
+.mapObjectSprite,
+.mapObjectThumb {
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+}
+
+.mapObjectThumb {
+  width: 36px;
+  height: 36px;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .7));
+}
+
+.mapObjectSprite {
+  position: absolute;
+  z-index: 2;
+  inset: -3%;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .68));
+}
+
+.mapObjectSprite.wallSprite {
+  inset: -8%;
+}
+
+.mapLighting {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mapLighting-dawn {
+  background: rgba(255, 139, 72, .15);
+  mix-blend-mode: color;
+}
+
+.mapLighting-dusk {
+  background: rgba(75, 39, 91, .25);
+  mix-blend-mode: multiply;
+}
+
+.mapLighting-night {
+  background:
+    radial-gradient(circle at 62% 46%, rgba(95, 124, 149, .1), transparent 32%),
+    rgba(8, 24, 53, .4);
+  mix-blend-mode: multiply;
+}
+
+.terrain-grass,
+.terrain-forest,
+.terrain-dirt,
+.terrain-stone,
+.terrain-sand,
+.terrain-water,
+.terrain-snow,
+.terrain-mud,
+.terrain-wood,
+.terrain-lava,
+.terrain-flagstone,
+.terrain-mossstone {
+  background-image: url("/map-assets/medieval-terrain.png") !important;
+  background-repeat: no-repeat !important;
+  background-size: 400% 300% !important;
+}
+
+.terrain-grass {
+  background-position: 0 0 !important;
+}
+
+.terrain-forest {
+  background-position: 33.333% 0 !important;
+}
+
+.terrain-dirt {
+  background-position: 66.667% 0 !important;
+}
+
+.terrain-stone {
+  background-position: 100% 0 !important;
+}
+
+.terrain-sand {
+  background-position: 0 50% !important;
+}
+
+.terrain-water {
+  background-position: 33.333% 50% !important;
+}
+
+.terrain-snow {
+  background-position: 66.667% 50% !important;
+}
+
+.terrain-mud {
+  background-position: 100% 50% !important;
+}
+
+.terrain-wood {
+  background-position: 0 100% !important;
+}
+
+.terrain-lava {
+  background-position: 33.333% 100% !important;
+}
+
+.terrain-flagstone {
+  background-position: 66.667% 100% !important;
+}
+
+.terrain-mossstone {
+  background-position: 100% 100% !important;
+}
+
 .enemyPage {
   width: min(1440px, calc(100% - 32px));
   margin: 0 auto;
@@ -1404,20 +1953,23 @@ textarea {
   .campaignLayout,
   .inlineForm,
   .battleLayout,
-  .enemyLayout {
+  .enemyLayout,
+  .mapCreatorLayout {
     grid-template-columns: 1fr;
   }
 
   .diaryTab,
   .dicePanel,
-  .campaignEnemyList {
+  .campaignEnemyList,
+  .savedMapsPanel {
     position: static;
   }
 
   .topbar,
   .formHeader,
   .battleHeader,
-  .enemyPageHeader {
+  .enemyPageHeader,
+  .mapCreatorHeader {
     align-items: flex-start;
     flex-direction: column;
     height: auto;
@@ -1438,6 +1990,21 @@ textarea {
   }
 
   .activeEnemies {
+    max-height: none;
+  }
+
+  .mapDocumentBar,
+  .mapEditorToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mapNameInput {
+    width: 100%;
+  }
+
+  .mapCanvasViewport {
+    min-height: 480px;
     max-height: none;
   }
 
@@ -1463,6 +2030,10 @@ textarea {
 
   .enemyPage {
     width: min(100% - 16px, 1440px);
+  }
+
+  .mapCreatorPage {
+    width: min(100% - 12px, 1580px);
   }
 
   .enemyFilters,

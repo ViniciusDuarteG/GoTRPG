@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, BookOpen, Copy, Dices, Eye, Heart, Image as ImageIcon, LogOut, Map as MapIcon, Minus, Pencil, Plus, Save, ScrollText, Search, Shield, Skull, Swords, Sword, Trash2, Upload, User, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Copy, Dices, Download, Eraser, Eye, Grid3X3, Heart, Image as ImageIcon, Layers3, LogOut, Map as MapIcon, Minus, Pencil, Plus, Redo2, Save, ScrollText, Search, Shield, Skull, Sun, Swords, Sword, Trash2, Undo2, Upload, User, Users, X } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -795,6 +795,179 @@ const blankEnemy = {
   source: 'Personalizado'
 };
 
+const mapTerrains = [
+  { id: 'grass', label: 'Grama', color: '#425536', atlas: [0, 0] },
+  { id: 'forest', label: 'Floresta', color: '#293526', atlas: [1, 0] },
+  { id: 'dirt', label: 'Terra', color: '#715943', atlas: [2, 0] },
+  { id: 'stone', label: 'Calçamento', color: '#555956', atlas: [3, 0] },
+  { id: 'sand', label: 'Areia', color: '#b9a27c', atlas: [0, 1] },
+  { id: 'water', label: 'Água', color: '#456d75', atlas: [1, 1] },
+  { id: 'snow', label: 'Neve', color: '#cbd2d1', atlas: [2, 1] },
+  { id: 'mud', label: 'Lama', color: '#493b32', atlas: [3, 1] },
+  { id: 'wood', label: 'Assoalho', color: '#604a38', atlas: [0, 2] },
+  { id: 'lava', label: 'Queimado', color: '#402b27', atlas: [1, 2] },
+  { id: 'flagstone', label: 'Lajes', color: '#565a57', atlas: [2, 2] },
+  { id: 'mossstone', label: 'Pedra musgosa', color: '#4e5645', atlas: [3, 2] }
+];
+
+const mapObjects = [
+  { id: 'tree', label: 'Árvore', atlas: 'objects', position: [0, 0] },
+  { id: 'pine', label: 'Pinheiro', atlas: 'objects', position: [1, 0] },
+  { id: 'bush', label: 'Arbusto', atlas: 'objects', position: [2, 0] },
+  { id: 'rock', label: 'Rocha', atlas: 'objects', position: [3, 0] },
+  { id: 'house', label: 'Casa', atlas: 'objects', position: [0, 1] },
+  { id: 'tower', label: 'Torre', atlas: 'objects', position: [1, 1] },
+  { id: 'camp', label: 'Tenda', atlas: 'objects', position: [2, 1] },
+  { id: 'fire', label: 'Fogueira', atlas: 'objects', position: [3, 1] },
+  { id: 'chest', label: 'Baú', atlas: 'objects', position: [0, 2] },
+  { id: 'barrel', label: 'Barril', atlas: 'objects', position: [1, 2] },
+  { id: 'table', label: 'Mesa', atlas: 'objects', position: [2, 2] },
+  { id: 'ruins', label: 'Ruínas', atlas: 'objects', position: [3, 2] },
+  { id: 'door', label: 'Porta', atlas: 'objects', position: [0, 3] },
+  { id: 'stairs', label: 'Escada', atlas: 'objects', position: [1, 3] },
+  { id: 'bridge', label: 'Ponte', atlas: 'objects', position: [2, 3] },
+  { id: 'well', label: 'Poço', atlas: 'objects', position: [3, 3] },
+  { id: 'wood_wall_h', label: 'Madeira — reta', atlas: 'walls', position: [0, 0], wall: true },
+  { id: 'wood_wall_v', label: 'Madeira — vertical', atlas: 'walls', position: [1, 0], wall: true },
+  { id: 'wood_wall_corner', label: 'Madeira — canto', atlas: 'walls', position: [2, 0], wall: true },
+  { id: 'wood_wall_t', label: 'Madeira — junção', atlas: 'walls', position: [3, 0], wall: true },
+  { id: 'stone_wall_h', label: 'Pedra — reta', atlas: 'walls', position: [0, 1], wall: true },
+  { id: 'stone_wall_v', label: 'Pedra — vertical', atlas: 'walls', position: [1, 1], wall: true },
+  { id: 'stone_wall_corner', label: 'Pedra — canto', atlas: 'walls', position: [2, 1], wall: true },
+  { id: 'stone_wall_t', label: 'Pedra — junção', atlas: 'walls', position: [3, 1], wall: true },
+  { id: 'masonry_wall_h', label: 'Alvenaria — reta', atlas: 'walls', position: [0, 2], wall: true },
+  { id: 'masonry_wall_v', label: 'Alvenaria — vertical', atlas: 'walls', position: [1, 2], wall: true },
+  { id: 'masonry_wall_corner', label: 'Alvenaria — canto', atlas: 'walls', position: [2, 2], wall: true },
+  { id: 'masonry_wall_t', label: 'Alvenaria — junção', atlas: 'walls', position: [3, 2], wall: true },
+  { id: 'stone_arch', label: 'Arco de pedra', atlas: 'walls', position: [0, 3], wall: true },
+  { id: 'wood_gate', label: 'Portão', atlas: 'walls', position: [1, 3], wall: true },
+  { id: 'stone_pillar', label: 'Pilar', atlas: 'walls', position: [2, 3], wall: true },
+  { id: 'wood_fence', label: 'Cerca', atlas: 'walls', position: [3, 3], wall: true },
+  { id: 'wall', label: 'Muralha antiga', atlas: 'walls', position: [0, 1], wall: true }
+];
+
+const mapTerrainColors = Object.fromEntries(mapTerrains.map((terrain) => [terrain.id, terrain.color]));
+const mapObjectById = Object.fromEntries(mapObjects.map((object) => [object.id, object]));
+const mapAssetPaths = {
+  terrain: '/map-assets/medieval-terrain.png',
+  objects: '/map-assets/medieval-objects.png',
+  walls: '/map-assets/medieval-walls.png'
+};
+
+function mapSpriteStyle(objectName) {
+  const object = mapObjectById[objectName];
+  if (!object) return {};
+  const [column, row] = object.position;
+  return {
+    backgroundImage: `url("${mapAssetPaths[object.atlas]}")`,
+    backgroundPosition: `${column * 100 / 3}% ${row * 100 / 3}%`
+  };
+}
+
+function newMapDraft(name = 'Novo mapa') {
+  const width = 24;
+  const height = 14;
+  return {
+    name,
+    width,
+    height,
+    tiles: Array(width * height).fill('grass'),
+    objects: {},
+    grid_visible: false,
+    time_of_day: 'day',
+    brightness: 100
+  };
+}
+
+function buildMapTemplate(template) {
+  const width = 24;
+  const height = 14;
+  const tiles = Array(width * height).fill(template.base || 'grass');
+  const objects = {};
+  const indexAt = (x, y) => y * width + x;
+  const terrain = (x, y, value) => {
+    if (x >= 0 && x < width && y >= 0 && y < height) tiles[indexAt(x, y)] = value;
+  };
+  const object = (x, y, value) => {
+    if (x >= 0 && x < width && y >= 0 && y < height) objects[indexAt(x, y)] = value;
+  };
+  const rect = (x1, y1, x2, y2, value) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) terrain(x, y, value);
+    }
+  };
+
+  if (template.id === 'village') {
+    rect(0, 6, 23, 7, 'dirt');
+    rect(10, 0, 12, 13, 'dirt');
+    [[3, 3], [7, 10], [16, 3], [19, 10]].forEach(([x, y]) => object(x, y, 'house'));
+    [[2, 2], [5, 1], [20, 2], [22, 5], [2, 11], [15, 11], [21, 12]].forEach(([x, y]) => object(x, y, 'tree'));
+    object(11, 6, 'well');
+    object(14, 8, 'camp');
+    object(15, 8, 'fire');
+    for (let x = 5; x <= 8; x += 1) object(x, 4, 'wood_fence');
+  } else if (template.id === 'ruined_keep') {
+    rect(4, 2, 19, 11, 'flagstone');
+    rect(6, 4, 17, 9, 'mossstone');
+    for (let x = 4; x <= 19; x += 1) {
+      object(x, 2, 'stone_wall_h');
+      object(x, 11, 'stone_wall_h');
+    }
+    for (let y = 3; y <= 10; y += 1) {
+      object(4, y, 'stone_wall_v');
+      object(19, y, 'stone_wall_v');
+    }
+    [[4, 2], [19, 2], [4, 11], [19, 11]].forEach(([x, y]) => object(x, y, 'stone_pillar'));
+    object(11, 11, 'stone_arch');
+    object(8, 6, 'ruins');
+    object(15, 7, 'ruins');
+    object(12, 5, 'stairs');
+  } else if (template.id === 'forest_camp') {
+    tiles.fill('forest');
+    rect(7, 4, 17, 10, 'grass');
+    rect(9, 6, 15, 9, 'dirt');
+    for (let x = 1; x < 23; x += 3) {
+      object(x, 1 + (x * 3) % 11, x % 2 ? 'pine' : 'tree');
+    }
+    [[8, 5], [16, 5], [8, 10], [17, 9]].forEach(([x, y]) => object(x, y, 'bush'));
+    object(11, 7, 'camp');
+    object(14, 7, 'camp');
+    object(12, 8, 'fire');
+    object(15, 9, 'barrel');
+  } else if (template.id === 'river_crossing') {
+    for (let y = 0; y < height; y += 1) {
+      terrain(10, y, 'sand');
+      terrain(11, y, 'water');
+      terrain(12, y, 'water');
+      terrain(13, y, 'sand');
+    }
+    rect(0, 6, 23, 7, 'dirt');
+    object(11, 6, 'bridge');
+    object(12, 6, 'bridge');
+    [[3, 2], [7, 4], [17, 2], [21, 5], [4, 11], [18, 11], [22, 9]].forEach(([x, y]) => object(x, y, 'tree'));
+    object(8, 5, 'rock');
+    object(15, 8, 'rock');
+  }
+
+  return {
+    name: template.name,
+    width,
+    height,
+    tiles,
+    objects,
+    grid_visible: false,
+    time_of_day: template.time || 'day',
+    brightness: template.brightness || 100
+  };
+}
+
+const mapTemplates = [
+  { id: 'village', name: 'Aldeia na Encruzilhada', description: 'Casas, poço, estrada e cercas.', base: 'grass', preview: 'dirt', time: 'dawn', brightness: 82 },
+  { id: 'ruined_keep', name: 'Fortaleza em Ruínas', description: 'Muralhas, pátio e pedras antigas.', base: 'grass', preview: 'flagstone', time: 'dusk', brightness: 66 },
+  { id: 'forest_camp', name: 'Acampamento na Floresta', description: 'Clareira, tendas e fogueira.', base: 'forest', preview: 'forest', time: 'night', brightness: 42 },
+  { id: 'river_crossing', name: 'Travessia do Rio', description: 'Estrada, margens e ponte de madeira.', base: 'grass', preview: 'water', time: 'day', brightness: 100 }
+];
+
 const blankCharacter = {
   nome: '', imagem: '', casa: 'Sem Casa', idade: '', sexo: '', jogador: '', descricao: '',
   xp: '', arquetipo: '', nivel: '', destino: '', intriga: '0', combate: '0', armadura: 'Roupas', armas: '',
@@ -858,6 +1031,7 @@ function App() {
     if (route === '/campaigns') return <Campaigns go={go} />;
     if (route === '/campaigns/new') return <CampaignForm go={go} />;
     if (/^\/campaigns\/[^/]+\/map$/.test(route)) return <CampaignBoard go={go} id={route.split('/')[2]} />;
+    if (/^\/campaigns\/[^/]+\/maps$/.test(route)) return <CampaignMaps go={go} id={route.split('/')[2]} />;
     if (/^\/campaigns\/[^/]+\/enemies$/.test(route)) return <CampaignEnemies go={go} id={route.split('/')[2]} />;
     if (route.startsWith('/campaigns/')) return <CampaignDetail go={go} id={route.split('/')[2]} />;
     return <Dashboard go={go} />;
@@ -1626,6 +1800,621 @@ function JoinCampaign({ go, code, authed }) {
   );
 }
 
+const mapAssetCache = {};
+
+function loadMapAsset(key) {
+  if (!mapAssetCache[key]) {
+    mapAssetCache[key] = new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error(`Não foi possível carregar ${mapAssetPaths[key]}`));
+      image.src = mapAssetPaths[key];
+    });
+  }
+  return mapAssetCache[key];
+}
+
+async function renderCreatedMap(map) {
+  const [terrainAtlas, objectAtlas, wallAtlas] = await Promise.all([
+    loadMapAsset('terrain'),
+    loadMapAsset('objects'),
+    loadMapAsset('walls')
+  ]);
+  const cellSize = Math.max(28, Math.min(64, Math.floor(1600 / map.width), Math.floor(1000 / map.height)));
+  const canvas = document.createElement('canvas');
+  canvas.width = map.width * cellSize;
+  canvas.height = map.height * cellSize;
+  const context = canvas.getContext('2d');
+  const terrainSourceWidth = terrainAtlas.naturalWidth / 4;
+  const terrainSourceHeight = terrainAtlas.naturalHeight / 3;
+
+  map.tiles.forEach((terrain, index) => {
+    const x = (index % map.width) * cellSize;
+    const y = Math.floor(index / map.width) * cellSize;
+    const terrainData = mapTerrains.find((item) => item.id === terrain) || mapTerrains[0];
+    const [column, row] = terrainData.atlas;
+    context.fillStyle = mapTerrainColors[terrainData.id] || mapTerrainColors.grass;
+    context.fillRect(x, y, cellSize, cellSize);
+    context.drawImage(
+      terrainAtlas,
+      column * terrainSourceWidth,
+      row * terrainSourceHeight,
+      terrainSourceWidth,
+      terrainSourceHeight,
+      x,
+      y,
+      cellSize,
+      cellSize
+    );
+  });
+
+  Object.entries(map.objects || {}).forEach(([rawIndex, objectName]) => {
+    const object = mapObjectById[objectName];
+    if (!object) return;
+    const index = Number(rawIndex);
+    const x = (index % map.width) * cellSize;
+    const y = Math.floor(index / map.width) * cellSize;
+    const source = object.atlas === 'walls' ? wallAtlas : objectAtlas;
+    const sourceWidth = source.naturalWidth / 4;
+    const sourceHeight = source.naturalHeight / 4;
+    const [column, row] = object.position;
+    const overscan = object.wall ? cellSize * .07 : 0;
+    context.drawImage(
+      source,
+      column * sourceWidth,
+      row * sourceHeight,
+      sourceWidth,
+      sourceHeight,
+      x - overscan,
+      y - overscan,
+      cellSize + overscan * 2,
+      cellSize + overscan * 2
+    );
+  });
+
+  if (map.grid_visible) {
+    context.strokeStyle = 'rgba(31, 20, 12, .34)';
+    context.lineWidth = 1;
+    for (let x = 0; x <= map.width; x += 1) {
+      context.beginPath();
+      context.moveTo(x * cellSize, 0);
+      context.lineTo(x * cellSize, canvas.height);
+      context.stroke();
+    }
+    for (let y = 0; y <= map.height; y += 1) {
+      context.beginPath();
+      context.moveTo(0, y * cellSize);
+      context.lineTo(canvas.width, y * cellSize);
+      context.stroke();
+    }
+  }
+
+  const timeTints = {
+    dawn: 'rgba(255, 139, 72, .15)',
+    day: 'rgba(255, 255, 255, 0)',
+    dusk: 'rgba(75, 39, 91, .24)',
+    night: 'rgba(8, 24, 53, .42)'
+  };
+  context.fillStyle = timeTints[map.time_of_day] || timeTints.day;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const brightness = Math.min(115, Math.max(20, Number(map.brightness) || 100));
+  if (brightness < 100) {
+    context.fillStyle = `rgba(0, 0, 0, ${(100 - brightness) / 100 * .64})`;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  } else if (brightness > 100) {
+    context.fillStyle = `rgba(255, 245, 220, ${(brightness - 100) / 100 * .32})`;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  return canvas.toDataURL('image/webp', .9);
+}
+
+function CampaignMaps({ go, id }) {
+  const paintingRef = useRef(false);
+  const editVersionRef = useRef(0);
+  const [campaign, setCampaign] = useState(null);
+  const [maps, setMaps] = useState([]);
+  const [currentMap, setCurrentMap] = useState(null);
+  const [selectedLayer, setSelectedLayer] = useState('terrain');
+  const [selectedTool, setSelectedTool] = useState('grass');
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [zoom, setZoom] = useState(1);
+  const [painting, setPainting] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    Promise.all([request(`/campaigns/${id}`), request(`/campaigns/${id}/maps`)])
+      .then(([campaignData, mapData]) => {
+        setCampaign(campaignData);
+        setMaps(mapData);
+        if (mapData.length) setCurrentMap({ ...mapData[0], tiles: [...mapData[0].tiles], objects: { ...mapData[0].objects } });
+      })
+      .catch((err) => setError(err.message));
+  }, [id]);
+
+  useEffect(() => {
+    const stopPainting = () => {
+      paintingRef.current = false;
+      setPainting(false);
+    };
+    addEventListener('pointerup', stopPainting);
+    addEventListener('pointercancel', stopPainting);
+    return () => {
+      removeEventListener('pointerup', stopPainting);
+      removeEventListener('pointercancel', stopPainting);
+    };
+  }, []);
+
+  function snapshot(map) {
+    return {
+      name: map.name,
+      width: map.width,
+      height: map.height,
+      tiles: [...map.tiles],
+      objects: { ...map.objects },
+      grid_visible: map.grid_visible,
+      time_of_day: map.time_of_day,
+      brightness: map.brightness
+    };
+  }
+
+  function markDirty() {
+    editVersionRef.current += 1;
+    setDirty(true);
+    setSaveStatus('Alterações pendentes');
+  }
+
+  function pushHistory() {
+    if (!currentMap) return;
+    setUndoStack((current) => [...current, snapshot(currentMap)].slice(-40));
+    setRedoStack([]);
+  }
+
+  function applySnapshot(mapSnapshot) {
+    setCurrentMap((current) => ({ ...current, ...mapSnapshot, tiles: [...mapSnapshot.tiles], objects: { ...mapSnapshot.objects } }));
+    markDirty();
+  }
+
+  function undo() {
+    if (!undoStack.length || !currentMap) return;
+    const previous = undoStack[undoStack.length - 1];
+    setRedoStack((current) => [...current, snapshot(currentMap)].slice(-40));
+    setUndoStack((current) => current.slice(0, -1));
+    applySnapshot(previous);
+  }
+
+  function redo() {
+    if (!redoStack.length || !currentMap) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack((current) => [...current, snapshot(currentMap)].slice(-40));
+    setRedoStack((current) => current.slice(0, -1));
+    applySnapshot(next);
+  }
+
+  function paintCell(index) {
+    if (!campaign?.is_owner) return;
+    setCurrentMap((current) => {
+      if (!current) return current;
+      if (selectedLayer === 'terrain') {
+        const terrain = selectedTool === 'erase' ? 'grass' : selectedTool;
+        if (current.tiles[index] === terrain) return current;
+        const tiles = [...current.tiles];
+        tiles[index] = terrain;
+        return { ...current, tiles };
+      }
+      const objects = { ...current.objects };
+      if (selectedTool === 'erase') {
+        if (!(index in objects)) return current;
+        delete objects[index];
+      } else {
+        if (objects[index] === selectedTool) return current;
+        objects[index] = selectedTool;
+      }
+      return { ...current, objects };
+    });
+    markDirty();
+  }
+
+  function startPainting(event, index) {
+    if (!campaign?.is_owner) return;
+    event.preventDefault();
+    pushHistory();
+    paintingRef.current = true;
+    setPainting(true);
+    paintCell(index);
+  }
+
+  function continuePainting(index) {
+    if (paintingRef.current) paintCell(index);
+  }
+
+  async function saveCurrent(showMessage = true) {
+    if (!currentMap?.id || !campaign?.is_owner) return currentMap;
+    const version = editVersionRef.current;
+    if (showMessage) setSaveStatus('Salvando...');
+    try {
+      const saved = await request(`/campaigns/${id}/maps/${currentMap.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(currentMap)
+      });
+      setMaps((current) => current.map((map) => map.id === saved.id ? saved : map));
+      if (version === editVersionRef.current) {
+        setDirty(false);
+        setSaveStatus('Salvo');
+      }
+      return saved;
+    } catch (err) {
+      setError(err.message);
+      setSaveStatus('Erro ao salvar');
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    if (!dirty || !currentMap?.id || !campaign?.is_owner || painting) return undefined;
+    const timer = setTimeout(() => saveCurrent(false), 1400);
+    return () => clearTimeout(timer);
+  }, [dirty, currentMap, campaign?.is_owner, painting]);
+
+  async function createMap() {
+    setError('');
+    try {
+      const created = await request(`/campaigns/${id}/maps`, {
+        method: 'POST',
+        body: JSON.stringify(newMapDraft(`Mapa ${maps.length + 1}`))
+      });
+      setMaps((current) => [created, ...current]);
+      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects } });
+      setUndoStack([]);
+      setRedoStack([]);
+      setDirty(false);
+      setSaveStatus('Salvo');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function createFromTemplate(template) {
+    setError('');
+    setSaveStatus('Criando mapa...');
+    try {
+      const created = await request(`/campaigns/${id}/maps`, {
+        method: 'POST',
+        body: JSON.stringify(buildMapTemplate(template))
+      });
+      setMaps((current) => [created, ...current]);
+      setCurrentMap({ ...created, tiles: [...created.tiles], objects: { ...created.objects } });
+      setUndoStack([]);
+      setRedoStack([]);
+      setDirty(false);
+      setSaveStatus('Mapa pronto para editar');
+    } catch (err) {
+      setError(err.message);
+      setSaveStatus('');
+    }
+  }
+
+  async function selectMap(map) {
+    if (dirty) await saveCurrent(false);
+    setCurrentMap({ ...map, tiles: [...map.tiles], objects: { ...map.objects } });
+    setUndoStack([]);
+    setRedoStack([]);
+    setDirty(false);
+    setSaveStatus('');
+  }
+
+  async function deleteMap(map) {
+    if (!confirm(`Excluir o mapa ${map.name}?`)) return;
+    setError('');
+    try {
+      await request(`/campaigns/${id}/maps/${map.id}`, { method: 'DELETE' });
+      const remaining = maps.filter((item) => item.id !== map.id);
+      setMaps(remaining);
+      if (currentMap?.id === map.id) {
+        setCurrentMap(remaining.length ? { ...remaining[0], tiles: [...remaining[0].tiles], objects: { ...remaining[0].objects } } : null);
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function resizeMap(width, height) {
+    if (!currentMap || (width === currentMap.width && height === currentMap.height)) return;
+    pushHistory();
+    const tiles = Array(width * height).fill('grass');
+    const objects = {};
+    for (let y = 0; y < Math.min(height, currentMap.height); y += 1) {
+      for (let x = 0; x < Math.min(width, currentMap.width); x += 1) {
+        const oldIndex = y * currentMap.width + x;
+        const newIndex = y * width + x;
+        tiles[newIndex] = currentMap.tiles[oldIndex];
+        if (currentMap.objects[oldIndex]) objects[newIndex] = currentMap.objects[oldIndex];
+      }
+    }
+    setCurrentMap((current) => ({ ...current, width, height, tiles, objects }));
+    markDirty();
+  }
+
+  function fillTerrain() {
+    if (!currentMap || selectedLayer !== 'terrain' || selectedTool === 'erase') return;
+    pushHistory();
+    setCurrentMap((current) => ({ ...current, tiles: Array(current.width * current.height).fill(selectedTool) }));
+    markDirty();
+  }
+
+  function clearObjects() {
+    if (!currentMap || !Object.keys(currentMap.objects).length) return;
+    pushHistory();
+    setCurrentMap((current) => ({ ...current, objects: {} }));
+    markDirty();
+  }
+
+  async function exportMap() {
+    if (!currentMap) return;
+    setSaveStatus('Renderizando...');
+    try {
+      const link = document.createElement('a');
+      link.href = await renderCreatedMap(currentMap);
+      link.download = `${currentMap.name.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, '-') || 'mapa'}.webp`;
+      link.click();
+      setSaveStatus(dirty ? 'Alterações pendentes' : 'Salvo');
+    } catch (err) {
+      setError(err.message);
+      setSaveStatus('Erro ao exportar');
+    }
+  }
+
+  async function useAtTable() {
+    if (!currentMap) return;
+    setSaveStatus('Preparando mesa...');
+    const saved = dirty ? await saveCurrent(false) : currentMap;
+    if (!saved) return;
+    try {
+      const mapImage = await renderCreatedMap({ ...currentMap, ...saved });
+      await request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ map_image: mapImage })
+      });
+      go(`/campaigns/${id}/map`);
+    } catch (err) {
+      setError(err.message);
+      setSaveStatus('Erro ao enviar');
+    }
+  }
+
+  if (!campaign && !error) return <main className="centerPage">Abrindo o ateliê de mapas...</main>;
+
+  return (
+    <main className="mapCreatorPage">
+      <div className="mapCreatorHeader">
+        <div>
+          <button className="backButton" onClick={() => go(`/campaigns/${id}`)}><ArrowLeft size={18} />Campanha</button>
+          <p className="kicker">Ateliê cartográfico</p>
+          <h1>Criar mapas</h1>
+        </div>
+        <div className="rowActions">
+          <button onClick={() => go(`/campaigns/${id}/map`)}><MapIcon size={18} />Mesa de jogo</button>
+          {campaign?.is_owner && currentMap && (
+            <>
+              <button onClick={exportMap}><Download size={18} />Exportar</button>
+              <button onClick={() => saveCurrent()}><Save size={18} />Salvar</button>
+              <button className="primary" onClick={useAtTable}><MapIcon size={18} />Usar na mesa</button>
+            </>
+          )}
+        </div>
+      </div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="mapCreatorLayout">
+        <aside className="savedMapsPanel">
+          <div className="savedMapsTitle">
+            <div>
+              <h2>Mapas</h2>
+              <span>{maps.length} salvos</span>
+            </div>
+            {campaign?.is_owner && <button className="primary" onClick={createMap}><Plus size={17} /></button>}
+          </div>
+          <div className="savedMapList">
+            {maps.map((map) => (
+              <div className={`savedMapItem${currentMap?.id === map.id ? ' active' : ''}`} key={map.id}>
+                <button onClick={() => selectMap(map)}>
+                  <i className={`terrain-${map.tiles?.[0] || 'grass'}`} />
+                  <span><strong>{map.name}</strong><small>{map.width} × {map.height}</small></span>
+                </button>
+                {campaign?.is_owner && <button className="mapDeleteButton" onClick={() => deleteMap(map)}><Trash2 size={15} /></button>}
+              </div>
+            ))}
+            {!maps.length && <p className="mapEmptyList">Crie o primeiro mapa.</p>}
+          </div>
+          {campaign?.is_owner && (
+            <div className="mapTemplateSection">
+              <div className="mapTemplateTitle">
+                <span>Mapas prontos</span>
+                <small>Cópias totalmente editáveis</small>
+              </div>
+              <div className="mapTemplateList">
+                {mapTemplates.map((template) => (
+                  <button key={template.id} onClick={() => createFromTemplate(template)}>
+                    <i className={`terrain-${template.preview}`} />
+                    <span>
+                      <strong>{template.name}</strong>
+                      <small>{template.description}</small>
+                    </span>
+                    <Plus size={15} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <section className="mapEditorPanel">
+          {!currentMap && (
+            <div className="emptyMapEditor">
+              <MapIcon size={54} />
+              <h2>Nenhum mapa criado</h2>
+              {campaign?.is_owner && <button className="primary" onClick={createMap}><Plus size={18} />Criar primeiro mapa</button>}
+            </div>
+          )}
+          {currentMap && (
+            <>
+              <div className="mapDocumentBar">
+                <input
+                  className="mapNameInput"
+                  value={currentMap.name}
+                  readOnly={!campaign?.is_owner}
+                  onChange={(event) => {
+                    setCurrentMap((current) => ({ ...current, name: event.target.value }));
+                    markDirty();
+                  }}
+                />
+                <div className="mapHistoryButtons">
+                  <button disabled={!undoStack.length || !campaign?.is_owner} onClick={undo} title="Desfazer"><Undo2 size={18} /></button>
+                  <button disabled={!redoStack.length || !campaign?.is_owner} onClick={redo} title="Refazer"><Redo2 size={18} /></button>
+                  <span>{saveStatus || (dirty ? 'Alterações pendentes' : 'Salvo')}</span>
+                </div>
+              </div>
+
+              <div className="mapEditorToolbar">
+                <div className="layerTabs">
+                  <button
+                    className={selectedLayer === 'terrain' ? 'active' : ''}
+                    onClick={() => {
+                      setSelectedLayer('terrain');
+                      setSelectedTool('grass');
+                    }}
+                  ><Layers3 size={17} />Terreno</button>
+                  <button
+                    className={selectedLayer === 'objects' ? 'active' : ''}
+                    onClick={() => {
+                      setSelectedLayer('objects');
+                      setSelectedTool('tree');
+                    }}
+                  ><Layers3 size={17} />Objetos</button>
+                </div>
+                <div className="mapViewTools">
+                  <label className="mapTimeSelect"><Sun size={15} />Horário
+                    <select
+                      disabled={!campaign?.is_owner}
+                      value={currentMap.time_of_day || 'day'}
+                      onChange={(event) => {
+                        const time = event.target.value;
+                        const defaults = { dawn: 82, day: 100, dusk: 66, night: 38 };
+                        pushHistory();
+                        setCurrentMap((current) => ({ ...current, time_of_day: time, brightness: defaults[time] }));
+                        markDirty();
+                      }}
+                    >
+                      <option value="dawn">Amanhecer</option>
+                      <option value="day">Dia</option>
+                      <option value="dusk">Entardecer</option>
+                      <option value="night">Noite</option>
+                    </select>
+                  </label>
+                  <label className="mapBrightness">Claridade
+                    <input
+                      type="range"
+                      min="20"
+                      max="115"
+                      value={currentMap.brightness ?? 100}
+                      disabled={!campaign?.is_owner}
+                      onPointerDown={pushHistory}
+                      onChange={(event) => {
+                        setCurrentMap((current) => ({ ...current, brightness: Number(event.target.value) }));
+                        markDirty();
+                      }}
+                    />
+                    <b>{currentMap.brightness ?? 100}%</b>
+                  </label>
+                  <label>Colunas
+                    <select disabled={!campaign?.is_owner} value={currentMap.width} onChange={(event) => resizeMap(Number(event.target.value), currentMap.height)}>
+                      {[16, 20, 24, 28, 32, 36, 40].map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </label>
+                  <label>Linhas
+                    <select disabled={!campaign?.is_owner} value={currentMap.height} onChange={(event) => resizeMap(currentMap.width, Number(event.target.value))}>
+                      {[10, 12, 14, 16, 18, 22, 26, 30].map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    className={currentMap.grid_visible ? 'active' : ''}
+                    disabled={!campaign?.is_owner}
+                    onClick={() => {
+                      pushHistory();
+                      setCurrentMap((current) => ({ ...current, grid_visible: !current.grid_visible }));
+                      markDirty();
+                    }}
+                    title="Exibir grade"
+                  ><Grid3X3 size={18} /></button>
+                  <button onClick={() => setZoom((value) => Math.max(.65, value - .15))}><Minus size={17} /></button>
+                  <span>{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom((value) => Math.min(1.55, value + .15))}><Plus size={17} /></button>
+                </div>
+              </div>
+
+              {campaign?.is_owner && (
+                <div className="mapPalette">
+                  {(selectedLayer === 'terrain' ? mapTerrains : mapObjects).map((tool) => (
+                    <button
+                      key={tool.id}
+                      className={selectedTool === tool.id ? 'active' : ''}
+                      onClick={() => setSelectedTool(tool.id)}
+                      title={tool.label}
+                    >
+                      {selectedLayer === 'terrain'
+                        ? <i className={`terrain-${tool.id}`} />
+                        : <span className={`mapObjectThumb${tool.wall ? ' wallSprite' : ''}`} style={mapSpriteStyle(tool.id)} />}
+                      <small>{tool.label}</small>
+                    </button>
+                  ))}
+                  <button className={selectedTool === 'erase' ? 'active' : ''} onClick={() => setSelectedTool('erase')}>
+                    <Eraser size={22} /><small>Borracha</small>
+                  </button>
+                  {selectedLayer === 'terrain'
+                    ? <button className="paletteAction" disabled={selectedTool === 'erase'} onClick={fillTerrain}>Preencher</button>
+                    : <button className="paletteAction" onClick={clearObjects}>Limpar</button>}
+                </div>
+              )}
+
+              <div className="mapCanvasViewport">
+                <div
+                  className={`mapCanvas${currentMap.grid_visible ? ' showGrid' : ''}`}
+                  style={{
+                    gridTemplateColumns: `repeat(${currentMap.width}, ${Math.round(42 * zoom)}px)`,
+                    gridAutoRows: `${Math.round(42 * zoom)}px`,
+                    filter: `brightness(${(currentMap.brightness ?? 100) / 100})`
+                  }}
+                >
+                  {currentMap.tiles.map((terrain, index) => (
+                    <button
+                      type="button"
+                      aria-label={`Célula ${index + 1}`}
+                      className={`mapCell terrain-${terrain}`}
+                      key={index}
+                      onPointerDown={(event) => startPainting(event, index)}
+                      onPointerEnter={() => continuePainting(index)}
+                    >
+                      {currentMap.objects[index] && (
+                        <span
+                          className={`mapObjectSprite${mapObjectById[currentMap.objects[index]]?.wall ? ' wallSprite' : ''}`}
+                          style={mapSpriteStyle(currentMap.objects[index])}
+                        />
+                      )}
+                    </button>
+                  ))}
+                  <div className={`mapLighting mapLighting-${currentMap.time_of_day || 'day'}`} />
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function CampaignEnemies({ go, id }) {
   const [campaign, setCampaign] = useState(null);
   const [enemies, setEnemies] = useState([]);
@@ -1766,6 +2555,7 @@ function CampaignEnemies({ go, id }) {
         </div>
         <div className="rowActions">
           <button onClick={() => go(`/campaigns/${id}/map`)}><MapIcon size={18} />Mesa de jogo</button>
+          <button onClick={() => go(`/campaigns/${id}/maps`)}><Layers3 size={18} />Criar mapas</button>
           {campaign?.is_owner && (
             <button className="primary" onClick={openCustomForm}><Plus size={18} />Inimigo personalizado</button>
           )}
@@ -2130,6 +2920,7 @@ function CampaignBoard({ go, id }) {
         </div>
         {campaign?.is_owner && (
           <div className="mapActions">
+            <button onClick={() => go(`/campaigns/${id}/maps`)}><Layers3 size={18} />Criar mapas</button>
             <button onClick={() => go(`/campaigns/${id}/enemies`)}><Skull size={18} />Inimigos</button>
             <label className="uploadButton">
               <Upload size={18} />
@@ -2375,6 +3166,9 @@ function CampaignDetail({ go, id }) {
               </button>
               <button onClick={() => go(`/campaigns/${id}/enemies`)}>
                 <Skull size={18} />Inimigos
+              </button>
+              <button onClick={() => go(`/campaigns/${id}/maps`)}>
+                <Layers3 size={18} />Criar mapas
               </button>
               <button onClick={copyInvite}><Copy size={18} />Copiar link</button>
               {campaign.is_owner && (
