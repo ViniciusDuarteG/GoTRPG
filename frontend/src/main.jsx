@@ -864,6 +864,13 @@ function mapSpriteStyle(objectName) {
   };
 }
 
+function mapBrightnessColor(value) {
+  const brightness = Math.min(115, Math.max(20, Number(value) || 100));
+  if (brightness < 100) return `rgba(0, 0, 0, ${(100 - brightness) / 100 * .64})`;
+  if (brightness > 100) return `rgba(255, 245, 220, ${(brightness - 100) / 100 * .32})`;
+  return 'transparent';
+}
+
 function newMapDraft(name = 'Novo mapa') {
   const width = 24;
   const height = 14;
@@ -1905,6 +1912,25 @@ async function renderCreatedMap(map) {
     context.fillStyle = `rgba(255, 245, 220, ${(brightness - 100) / 100 * .32})`;
     context.fillRect(0, 0, canvas.width, canvas.height);
   }
+
+  const fireStrength = { dawn: .42, day: .24, dusk: .62, night: .88 }[map.time_of_day] || .24;
+  context.save();
+  context.globalCompositeOperation = 'screen';
+  Object.entries(map.objects || {}).forEach(([rawIndex, objectName]) => {
+    if (objectName !== 'fire') return;
+    const index = Number(rawIndex);
+    const centerX = (index % map.width) * cellSize + cellSize / 2;
+    const centerY = Math.floor(index / map.width) * cellSize + cellSize / 2;
+    const radius = cellSize * 2;
+    const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+    glow.addColorStop(0, `rgba(255, 239, 179, ${fireStrength})`);
+    glow.addColorStop(.24, `rgba(255, 186, 64, ${fireStrength * .72})`);
+    glow.addColorStop(.58, `rgba(218, 91, 25, ${fireStrength * .34})`);
+    glow.addColorStop(1, 'rgba(180, 55, 10, 0)');
+    context.fillStyle = glow;
+    context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+  });
+  context.restore();
   return canvas.toDataURL('image/webp', .9);
 }
 
@@ -2383,8 +2409,7 @@ function CampaignMaps({ go, id }) {
                   className={`mapCanvas${currentMap.grid_visible ? ' showGrid' : ''}`}
                   style={{
                     gridTemplateColumns: `repeat(${currentMap.width}, ${Math.round(42 * zoom)}px)`,
-                    gridAutoRows: `${Math.round(42 * zoom)}px`,
-                    filter: `brightness(${(currentMap.brightness ?? 100) / 100})`
+                    gridAutoRows: `${Math.round(42 * zoom)}px`
                   }}
                 >
                   {currentMap.tiles.map((terrain, index) => (
@@ -2405,6 +2430,28 @@ function CampaignMaps({ go, id }) {
                     </button>
                   ))}
                   <div className={`mapLighting mapLighting-${currentMap.time_of_day || 'day'}`} />
+                  <div
+                    className="mapBrightnessOverlay"
+                    style={{ background: mapBrightnessColor(currentMap.brightness) }}
+                  />
+                  {Object.entries(currentMap.objects || {})
+                    .filter(([, objectName]) => objectName === 'fire')
+                    .map(([rawIndex]) => {
+                      const index = Number(rawIndex);
+                      const cellPixels = Math.round(42 * zoom);
+                      return (
+                        <div
+                          className={`mapFireGlow mapFireGlow-${currentMap.time_of_day || 'day'}`}
+                          key={`fire-glow-${rawIndex}`}
+                          style={{
+                            width: `${cellPixels * 4}px`,
+                            height: `${cellPixels * 4}px`,
+                            left: `${((index % currentMap.width) - 1.5) * cellPixels}px`,
+                            top: `${(Math.floor(index / currentMap.width) - 1.5) * cellPixels}px`
+                          }}
+                        />
+                      );
+                    })}
                 </div>
               </div>
             </>

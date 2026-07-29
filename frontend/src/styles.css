@@ -1074,6 +1074,7 @@ textarea {
   margin: auto;
   border: 8px solid #4b2a18;
   outline: 1px solid #a16b36;
+  overflow: hidden;
   display: inline-grid;
   box-shadow: 0 22px 55px rgba(0, 0, 0, .65);
   user-select: none;
@@ -1129,6 +1130,45 @@ textarea {
   z-index: 5;
   inset: 0;
   pointer-events: none;
+}
+
+.mapBrightnessOverlay {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mapFireGlow {
+  position: absolute;
+  z-index: 7;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle,
+      rgba(255, 240, 183, .88) 0,
+      rgba(255, 182, 57, .58) 24%,
+      rgba(207, 75, 20, .25) 58%,
+      transparent 100%
+    );
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.mapFireGlow-day {
+  opacity: .26;
+}
+
+.mapFireGlow-dawn {
+  opacity: .48;
+}
+
+.mapFireGlow-dusk {
+  opacity: .72;
+}
+
+.mapFireGlow-night {
+  opacity: 1;
 }
 
 .mapLighting-dawn {
