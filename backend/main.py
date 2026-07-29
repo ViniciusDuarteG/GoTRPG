@@ -386,6 +386,152 @@ def clean_campaign_map(payload: object, fallback: dict | None = None) -> tuple[s
     return name, width, height, data
 
 
+def clean_board_state(
+    payload: object,
+    fallback: dict | None = None,
+    valid_token_ids: set[str] | None = None,
+) -> dict:
+    base = dict(fallback or {})
+    if isinstance(payload, dict):
+        base.update(payload)
+
+    grid_payload = base.get("grid", {})
+    if not isinstance(grid_payload, dict):
+        grid_payload = {}
+    try:
+        grid_width = min(40, max(0, int(grid_payload.get("width", 0))))
+        grid_height = min(30, max(0, int(grid_payload.get("height", 0))))
+    except (TypeError, ValueError):
+        grid_width, grid_height = 0, 0
+    grid_count = grid_width * grid_height
+    blocked = []
+    raw_blocked = grid_payload.get("blocked", [])
+    if isinstance(raw_blocked, list) and grid_count:
+        for raw_index in raw_blocked[:1200]:
+            try:
+                index = int(raw_index)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < grid_count and index not in blocked:
+                blocked.append(index)
+
+    try:
+        vision_radius = min(12, max(1, int(base.get("vision_radius", 5))))
+    except (TypeError, ValueError):
+        vision_radius = 5
+    weather = str(base.get("weather", "clear"))
+    if weather not in {"clear", "rain", "snow", "mist", "storm"}:
+        weather = "clear"
+
+    combat_payload = base.get("combat", {})
+    if not isinstance(combat_payload, dict):
+        combat_payload = {}
+    order = []
+    raw_order = combat_payload.get("order", [])
+    if isinstance(raw_order, list):
+        for raw_entry in raw_order[:80]:
+            if isinstance(raw_entry, dict):
+                token_id = str(raw_entry.get("id", ""))[:80]
+                try:
+                    initiative = min(99, max(-99, int(raw_entry.get("initiative", 0))))
+                except (TypeError, ValueError):
+                    initiative = 0
+            else:
+                token_id = str(raw_entry)[:80]
+                initiative = 0
+            if not token_id or (valid_token_ids is not None and token_id not in valid_token_ids):
+                continue
+            if token_id not in {entry["id"] for entry in order}:
+                order.append({"id": token_id, "initiative": initiative})
+    try:
+        turn_index = max(0, int(combat_payload.get("turn_index", 0)))
+        round_number = min(999, max(1, int(combat_payload.get("round", 1))))
+    except (TypeError, ValueError):
+        turn_index, round_number = 0, 1
+    if order:
+        turn_index %= len(order)
+    else:
+        turn_index = 0
+
+    effect = None
+    raw_effect = combat_payload.get("effect")
+    if isinstance(raw_effect, dict):
+        attacker = str(raw_effect.get("attacker", ""))[:80]
+        target = str(raw_effect.get("target", ""))[:80]
+        if (
+            attacker
+            and target
+            and (valid_token_ids is None or attacker in valid_token_ids)
+            and (valid_token_ids is None or target in valid_token_ids)
+        ):
+            effect = {
+                "id": str(raw_effect.get("id", ""))[:80] or str(int(time.time() * 1000)),
+                "type": "attack",
+                "attacker": attacker,
+                "target": target,
+            }
+
+    return {
+        "grid": {"width": grid_width, "height": grid_height, "blocked": blocked},
+        "physics_enabled": bool(base.get("physics_enabled", True)),
+        "fog_enabled": bool(base.get("fog_enabled", False)),
+        "vision_radius": vision_radius,
+        "weather": weather,
+        "combat": {
+            "active": bool(combat_payload.get("active", False)) and bool(order),
+            "order": order,
+            "turn_index": turn_index,
+            "round": round_number,
+            "effect": effect,
+        },
+    }
+
+
+def board_path_is_blocked(start: dict | None, end: dict, board_state: dict) -> bool:
+    if not board_state.get("physics_enabled"):
+        return False
+    grid = board_state.get("grid", {})
+    width = int(grid.get("width", 0))
+    height = int(grid.get("height", 0))
+    blocked = {int(index) for index in grid.get("blocked", [])}
+    if not width or not height or not blocked:
+        return False
+
+    def cell(position: dict) -> tuple[int, int]:
+        return (
+            min(width - 1, max(0, int(float(position["x"]) / 100 * width))),
+            min(height - 1, max(0, int(float(position["y"]) / 100 * height))),
+        )
+
+    end_x, end_y = cell(end)
+    if end_y * width + end_x in blocked:
+        return True
+    if not isinstance(start, dict) or "x" not in start or "y" not in start:
+        return False
+
+    x, y = cell(start)
+    dx = abs(end_x - x)
+    dy = abs(end_y - y)
+    step_x = 1 if x < end_x else -1
+    step_y = 1 if y < end_y else -1
+    error = dx - dy
+    first = True
+    while True:
+        if not first and y * width + x in blocked:
+            return True
+        if x == end_x and y == end_y:
+            break
+        first = False
+        double_error = error * 2
+        if double_error > -dy:
+            error -= dy
+            x += step_x
+        if double_error < dx:
+            error += dx
+            y += step_y
+    return False
+
+
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -475,6 +621,7 @@ def init_db() -> None:
                 campaign_id INTEGER PRIMARY KEY,
                 map_image TEXT NOT NULL DEFAULT '',
                 token_positions TEXT NOT NULL DEFAULT '{}',
+                board_state TEXT NOT NULL DEFAULT '{}',
                 updated_at INTEGER NOT NULL,
                 updated_by INTEGER NOT NULL,
                 FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
@@ -482,6 +629,14 @@ def init_db() -> None:
             )
             """
         )
+        board_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(campaign_boards)").fetchall()
+        }
+        if "board_state" not in board_columns:
+            conn.execute(
+                "ALTER TABLE campaign_boards ADD COLUMN board_state TEXT NOT NULL DEFAULT '{}'"
+            )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS campaign_rolls (
@@ -1356,7 +1511,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
             board = conn.execute(
                 """
-                SELECT map_image, token_positions, updated_at
+                SELECT map_image, token_positions, board_state, updated_at
                 FROM campaign_boards
                 WHERE campaign_id = ?
                 """,
@@ -1377,11 +1532,16 @@ class Handler(BaseHTTPRequestHandler):
             token_positions = json.loads(board["token_positions"]) if board else {}
         except (json.JSONDecodeError, TypeError):
             token_positions = {}
+        try:
+            board_state = clean_board_state(json.loads(board["board_state"])) if board else clean_board_state({})
+        except (json.JSONDecodeError, TypeError):
+            board_state = clean_board_state({})
         self.send_json(
             200,
             {
                 "map_image": board["map_image"] if board else "",
                 "token_positions": token_positions,
+                "board_state": board_state,
                 "updated_at": board["updated_at"] if board else None,
                 "rolls": [
                     {
@@ -1410,7 +1570,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
             is_owner = campaign["owner_id"] == user_id
             current = conn.execute(
-                "SELECT map_image, token_positions FROM campaign_boards WHERE campaign_id = ?",
+                "SELECT map_image, token_positions, board_state FROM campaign_boards WHERE campaign_id = ?",
                 (campaign_id,),
             ).fetchone()
             map_image = current["map_image"] if current else ""
@@ -1418,6 +1578,38 @@ class Handler(BaseHTTPRequestHandler):
                 positions = json.loads(current["token_positions"]) if current else {}
             except (json.JSONDecodeError, TypeError):
                 positions = {}
+            try:
+                current_board_state = (
+                    clean_board_state(json.loads(current["board_state"])) if current else clean_board_state({})
+                )
+            except (json.JSONDecodeError, TypeError):
+                current_board_state = clean_board_state({})
+
+            character_rows = conn.execute(
+                """
+                SELECT ch.id, ch.user_id
+                FROM campaign_characters cc
+                JOIN characters ch ON ch.id = cc.character_id
+                WHERE cc.campaign_id = ?
+                """,
+                (campaign_id,),
+            ).fetchall()
+            character_owners = {str(row["id"]): row["user_id"] for row in character_rows}
+            enemy_ids = {
+                f"enemy:{row['id']}"
+                for row in conn.execute(
+                    "SELECT id FROM campaign_enemies WHERE campaign_id = ?",
+                    (campaign_id,),
+                ).fetchall()
+            }
+            valid_token_ids = set(character_owners) | enemy_ids
+            board_state = clean_board_state(
+                payload.get("board_state", {}),
+                current_board_state,
+                valid_token_ids,
+            )
+            if "board_state" in payload and not is_owner:
+                return self.send_json(403, {"detail": "Apenas o mestre altera as regras da mesa"})
 
             if "map_image" in payload:
                 if not is_owner:
@@ -1431,23 +1623,6 @@ class Handler(BaseHTTPRequestHandler):
 
             submitted_positions = payload.get("token_positions")
             if isinstance(submitted_positions, dict):
-                character_rows = conn.execute(
-                    """
-                    SELECT ch.id, ch.user_id
-                    FROM campaign_characters cc
-                    JOIN characters ch ON ch.id = cc.character_id
-                    WHERE cc.campaign_id = ?
-                    """,
-                    (campaign_id,),
-                ).fetchall()
-                character_owners = {str(row["id"]): row["user_id"] for row in character_rows}
-                enemy_ids = {
-                    f"enemy:{row['id']}"
-                    for row in conn.execute(
-                        "SELECT id FROM campaign_enemies WHERE campaign_id = ?",
-                        (campaign_id,),
-                    ).fetchall()
-                }
                 for character_id, position in submitted_positions.items():
                     character_id = str(character_id)
                     is_enemy = character_id in enemy_ids
@@ -1464,34 +1639,63 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     if not math.isfinite(x) or not math.isfinite(y):
                         continue
-                    positions[character_id] = {
+                    candidate = {
                         "x": round(min(100, max(0, x)), 3),
                         "y": round(min(100, max(0, y)), 3),
                     }
+                    if board_path_is_blocked(positions.get(character_id), candidate, board_state):
+                        continue
+                    grid = board_state.get("grid", {})
+                    grid_width = int(grid.get("width", 0))
+                    grid_height = int(grid.get("height", 0))
+                    if board_state.get("physics_enabled") and grid_width and grid_height:
+                        candidate_cell = (
+                            min(grid_width - 1, int(candidate["x"] / 100 * grid_width)),
+                            min(grid_height - 1, int(candidate["y"] / 100 * grid_height)),
+                        )
+                        occupied = False
+                        for other_id, other_position in positions.items():
+                            if other_id == character_id or not isinstance(other_position, dict):
+                                continue
+                            try:
+                                other_cell = (
+                                    min(grid_width - 1, int(float(other_position["x"]) / 100 * grid_width)),
+                                    min(grid_height - 1, int(float(other_position["y"]) / 100 * grid_height)),
+                                )
+                            except (KeyError, TypeError, ValueError):
+                                continue
+                            if other_cell == candidate_cell:
+                                occupied = True
+                                break
+                        if occupied:
+                            continue
+                    positions[character_id] = candidate
 
             encoded_positions = json.dumps(positions, separators=(",", ":"))
+            encoded_board_state = json.dumps(board_state, separators=(",", ":"))
             cursor = conn.execute(
                 """
                 UPDATE campaign_boards
-                SET map_image = ?, token_positions = ?, updated_at = ?, updated_by = ?
+                SET map_image = ?, token_positions = ?, board_state = ?, updated_at = ?, updated_by = ?
                 WHERE campaign_id = ?
                 """,
-                (map_image, encoded_positions, now, user_id, campaign_id),
+                (map_image, encoded_positions, encoded_board_state, now, user_id, campaign_id),
             )
             if cursor.rowcount == 0:
                 conn.execute(
                     """
                     INSERT INTO campaign_boards
-                        (campaign_id, map_image, token_positions, updated_at, updated_by)
-                    VALUES (?, ?, ?, ?, ?)
+                        (campaign_id, map_image, token_positions, board_state, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (campaign_id, map_image, encoded_positions, now, user_id),
+                    (campaign_id, map_image, encoded_positions, encoded_board_state, now, user_id),
                 )
         self.send_json(
             200,
             {
                 "map_image": map_image,
                 "token_positions": positions,
+                "board_state": board_state,
                 "updated_at": now,
             },
         )

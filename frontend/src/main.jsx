@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, BookOpen, Copy, Dices, Download, Eraser, Eye, Grid3X3, Heart, Image as ImageIcon, Layers3, LogOut, Map as MapIcon, Minus, Pencil, Plus, Redo2, Save, ScrollText, Search, Shield, Skull, Sun, Swords, Sword, Trash2, Undo2, Upload, User, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, CloudRain, Copy, Crosshair, Dices, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, Image as ImageIcon, Layers3, LogOut, Map as MapIcon, Minus, Pause, Pencil, Play, Plus, Redo2, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -848,6 +848,13 @@ const mapObjects = [
 
 const mapTerrainColors = Object.fromEntries(mapTerrains.map((terrain) => [terrain.id, terrain.color]));
 const mapObjectById = Object.fromEntries(mapObjects.map((object) => [object.id, object]));
+const blockingMapObjects = new Set([
+  'tree', 'pine', 'rock', 'house', 'tower', 'chest', 'barrel', 'table',
+  'ruins', 'well', 'wall', 'wood_wall_h', 'wood_wall_v', 'wood_wall_corner',
+  'wood_wall_t', 'stone_wall_h', 'stone_wall_v', 'stone_wall_corner',
+  'stone_wall_t', 'masonry_wall_h', 'masonry_wall_v', 'masonry_wall_corner',
+  'masonry_wall_t', 'stone_arch', 'wood_gate', 'stone_pillar', 'wood_fence'
+]);
 const mapAssetPaths = {
   terrain: '/map-assets/medieval-terrain.png',
   objects: '/map-assets/medieval-objects.png',
@@ -2199,9 +2206,22 @@ function CampaignMaps({ go, id }) {
     if (!saved) return;
     try {
       const mapImage = await renderCreatedMap({ ...currentMap, ...saved });
+      const blocked = Object.entries(currentMap.objects || {})
+        .filter(([, objectName]) => blockingMapObjects.has(objectName))
+        .map(([rawIndex]) => Number(rawIndex));
       await request(`/campaigns/${id}/board`, {
         method: 'PUT',
-        body: JSON.stringify({ map_image: mapImage })
+        body: JSON.stringify({
+          map_image: mapImage,
+          board_state: {
+            grid: {
+              width: currentMap.width,
+              height: currentMap.height,
+              blocked
+            },
+            physics_enabled: true
+          }
+        })
       });
       go(`/campaigns/${id}/map`);
     } catch (err) {
@@ -2790,13 +2810,141 @@ function prepareMapImage(file) {
   });
 }
 
+function normalizeBoardState(value = {}) {
+  const grid = value.grid && typeof value.grid === 'object' ? value.grid : {};
+  const width = Math.max(0, Math.min(40, Number(grid.width) || 0));
+  const height = Math.max(0, Math.min(30, Number(grid.height) || 0));
+  const combat = value.combat && typeof value.combat === 'object' ? value.combat : {};
+  return {
+    grid: {
+      width,
+      height,
+      blocked: Array.isArray(grid.blocked) ? grid.blocked.map(Number).filter(Number.isFinite) : []
+    },
+    physics_enabled: value.physics_enabled !== false,
+    fog_enabled: Boolean(value.fog_enabled),
+    vision_radius: Math.max(1, Math.min(12, Number(value.vision_radius) || 5)),
+    weather: ['clear', 'rain', 'snow', 'mist', 'storm'].includes(value.weather) ? value.weather : 'clear',
+    combat: {
+      active: Boolean(combat.active),
+      order: Array.isArray(combat.order)
+        ? combat.order.map((entry) => typeof entry === 'object'
+          ? { id: String(entry.id), initiative: Number(entry.initiative) || 0 }
+          : { id: String(entry), initiative: 0 })
+        : [],
+      turn_index: Math.max(0, Number(combat.turn_index) || 0),
+      round: Math.max(1, Number(combat.round) || 1),
+      effect: combat.effect || null
+    }
+  };
+}
+
+function gridCellFromPosition(position, width, height) {
+  return {
+    x: Math.min(width - 1, Math.max(0, Math.floor((position.x / 100) * width))),
+    y: Math.min(height - 1, Math.max(0, Math.floor((position.y / 100) * height)))
+  };
+}
+
+function gridLineIsBlocked(from, to, width, height, blocked) {
+  if (!width || !height || !blocked.size) return false;
+  const start = gridCellFromPosition(from, width, height);
+  const end = gridCellFromPosition(to, width, height);
+  if (blocked.has(end.y * width + end.x)) return true;
+  let x = start.x;
+  let y = start.y;
+  const dx = Math.abs(end.x - x);
+  const dy = Math.abs(end.y - y);
+  const stepX = x < end.x ? 1 : -1;
+  const stepY = y < end.y ? 1 : -1;
+  let error = dx - dy;
+  let first = true;
+  while (true) {
+    if (!first && blocked.has(y * width + x)) return true;
+    if (x === end.x && y === end.y) break;
+    first = false;
+    const doubleError = error * 2;
+    if (doubleError > -dy) {
+      error -= dy;
+      x += stepX;
+    }
+    if (doubleError < dx) {
+      error += dx;
+      y += stepY;
+    }
+  }
+  return false;
+}
+
+function boardMoveIsBlocked(from, to, tokenId, positions, boardState) {
+  if (!boardState.physics_enabled) return false;
+  const { width, height, blocked: blockedCells } = boardState.grid;
+  if (!width || !height) return false;
+  const blocked = new Set(blockedCells);
+  if (gridLineIsBlocked(from, to, width, height, blocked)) return true;
+  const targetCell = gridCellFromPosition(to, width, height);
+  return Object.entries(positions).some(([otherId, otherPosition]) => {
+    if (String(otherId) === String(tokenId) || !otherPosition) return false;
+    const otherCell = gridCellFromPosition(otherPosition, width, height);
+    return otherCell.x === targetCell.x && otherCell.y === targetCell.y;
+  });
+}
+
+function hasGridLineOfSight(sourceX, sourceY, targetX, targetY, width, blocked) {
+  let x = sourceX;
+  let y = sourceY;
+  const dx = Math.abs(targetX - x);
+  const dy = Math.abs(targetY - y);
+  const stepX = x < targetX ? 1 : -1;
+  const stepY = y < targetY ? 1 : -1;
+  let error = dx - dy;
+  let first = true;
+  while (true) {
+    if (!first && !(x === targetX && y === targetY) && blocked.has(y * width + x)) return false;
+    if (x === targetX && y === targetY) return true;
+    first = false;
+    const doubleError = error * 2;
+    if (doubleError > -dy) {
+      error -= dy;
+      x += stepX;
+    }
+    if (doubleError < dx) {
+      error += dx;
+      y += stepY;
+    }
+  }
+}
+
+function visibleBoardCells(boardState, sourcePositions) {
+  const { width, height, blocked: blockedCells } = boardState.grid;
+  if (!width || !height) return [];
+  const radius = boardState.vision_radius;
+  const blocked = new Set(blockedCells);
+  const visible = new Set();
+  sourcePositions.forEach((position) => {
+    const source = gridCellFromPosition(position, width, height);
+    for (let y = Math.max(0, source.y - radius); y <= Math.min(height - 1, source.y + radius); y += 1) {
+      for (let x = Math.max(0, source.x - radius); x <= Math.min(width - 1, source.x + radius); x += 1) {
+        if (Math.hypot(x - source.x, y - source.y) > radius + .35) continue;
+        if (hasGridLineOfSight(source.x, source.y, x, y, width, blocked)) {
+          visible.add(y * width + x);
+        }
+      }
+    }
+  });
+  return [...visible];
+}
+
 function CampaignBoard({ go, id }) {
   const boardRef = useRef(null);
   const draggingRef = useRef(null);
+  const moveSyncRef = useRef(0);
+  const collisionTimerRef = useRef(null);
   const [campaign, setCampaign] = useState(null);
   const [enemies, setEnemies] = useState([]);
   const [mapImage, setMapImage] = useState('');
   const [positions, setPositions] = useState({});
+  const [boardState, setBoardState] = useState(() => normalizeBoardState());
   const [rolls, setRolls] = useState([]);
   const [sides, setSides] = useState(20);
   const [quantity, setQuantity] = useState(1);
@@ -2804,14 +2952,21 @@ function CampaignBoard({ go, id }) {
   const [rollFace, setRollFace] = useState(20);
   const [lastRoll, setLastRoll] = useState(null);
   const [savingMap, setSavingMap] = useState(false);
+  const [draggingToken, setDraggingToken] = useState('');
+  const [collisionToken, setCollisionToken] = useState('');
+  const [selectedTarget, setSelectedTarget] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncedAt, setSyncedAt] = useState(null);
   const [error, setError] = useState('');
 
   function applyBoard(data, includePositions = true) {
-    setMapImage(data.map_image || '');
-    setRolls(data.rolls || []);
+    if ('map_image' in data) setMapImage(data.map_image || '');
+    if (Array.isArray(data.rolls)) setRolls(data.rolls);
+    if (data.board_state) setBoardState(normalizeBoardState(data.board_state));
     if (includePositions) {
       setPositions(data.token_positions || {});
     }
+    setSyncedAt(Date.now());
   }
 
   useEffect(() => {
@@ -2834,15 +2989,20 @@ function CampaignBoard({ go, id }) {
   }, [id]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      Promise.all([request(`/campaigns/${id}/board`), request(`/campaigns/${id}/enemies`)])
-        .then(([boardData, enemyData]) => {
+    const boardInterval = setInterval(() => {
+      request(`/campaigns/${id}/board`)
+        .then((boardData) => {
           applyBoard(boardData, !draggingRef.current);
-          setEnemies(enemyData);
         })
         .catch(() => {});
+    }, 900);
+    const enemyInterval = setInterval(() => {
+      request(`/campaigns/${id}/enemies`).then(setEnemies).catch(() => {});
     }, 3500);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(boardInterval);
+      clearInterval(enemyInterval);
+    };
   }, [id]);
 
   function defaultPosition(index) {
@@ -2868,21 +3028,47 @@ function CampaignBoard({ go, id }) {
     if (!movable) return;
     event.preventDefault();
     draggingRef.current = { id: String(tokenId), pointerId: event.pointerId };
+    setDraggingToken(String(tokenId));
     event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function showCollision(tokenId) {
+    setCollisionToken(String(tokenId));
+    clearTimeout(collisionTimerRef.current);
+    collisionTimerRef.current = setTimeout(() => setCollisionToken(''), 260);
+  }
+
+  function legalTokenPosition(candidate, tokenId) {
+    const tokenIndex = tokenCatalog.findIndex((token) => token.id === String(tokenId));
+    const current = positions[tokenId] || defaultPosition(Math.max(0, tokenIndex));
+    if (boardMoveIsBlocked(current, candidate, tokenId, positions, boardState)) {
+      showCollision(tokenId);
+      return current;
+    }
+    return candidate;
   }
 
   function moveToken(event, tokenId) {
     const drag = draggingRef.current;
     if (!drag || drag.id !== String(tokenId) || drag.pointerId !== event.pointerId) return;
-    const position = positionFromPointer(event);
+    const position = legalTokenPosition(positionFromPointer(event), tokenId);
     setPositions((current) => ({ ...current, [tokenId]: position }));
+    const now = Date.now();
+    if (now - moveSyncRef.current > 180) {
+      moveSyncRef.current = now;
+      request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ token_positions: { [tokenId]: position } })
+      }).catch(() => {});
+    }
   }
 
   async function endTokenDrag(event, tokenId) {
     const drag = draggingRef.current;
     if (!drag || drag.id !== String(tokenId) || drag.pointerId !== event.pointerId) return;
-    const position = positionFromPointer(event);
+    const position = legalTokenPosition(positionFromPointer(event), tokenId);
     draggingRef.current = null;
+    setDraggingToken('');
     setPositions((current) => ({ ...current, [tokenId]: position }));
     try {
       const saved = await request(`/campaigns/${id}/board`, {
@@ -2892,6 +3078,30 @@ function CampaignBoard({ go, id }) {
       setPositions(saved.token_positions || {});
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function saveBoardState(patch) {
+    if (!campaign?.is_owner) return;
+    const next = normalizeBoardState({
+      ...boardState,
+      ...patch,
+      grid: patch.grid ? { ...boardState.grid, ...patch.grid } : boardState.grid,
+      combat: patch.combat ? { ...boardState.combat, ...patch.combat } : boardState.combat
+    });
+    setBoardState(next);
+    setSyncing(true);
+    try {
+      const saved = await request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ board_state: next })
+      });
+      setBoardState(normalizeBoardState(saved.board_state));
+      setSyncedAt(Date.now());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -2905,9 +3115,12 @@ function CampaignBoard({ go, id }) {
       const preparedImage = await prepareMapImage(file);
       const saved = await request(`/campaigns/${id}/board`, {
         method: 'PUT',
-        body: JSON.stringify({ map_image: preparedImage })
+        body: JSON.stringify({
+          map_image: preparedImage,
+          board_state: { grid: { width: 24, height: 14, blocked: [] } }
+        })
       });
-      setMapImage(saved.map_image || '');
+      applyBoard(saved);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2921,7 +3134,10 @@ function CampaignBoard({ go, id }) {
     try {
       await request(`/campaigns/${id}/board`, {
         method: 'PUT',
-        body: JSON.stringify({ map_image: '' })
+        body: JSON.stringify({
+          map_image: '',
+          board_state: { grid: { width: 0, height: 0, blocked: [] }, fog_enabled: false }
+        })
       });
       setMapImage('');
     } catch (err) {
@@ -2953,6 +3169,93 @@ function CampaignBoard({ go, id }) {
     }
   }
 
+  const tokenCatalog = useMemo(() => [
+    ...(campaign?.characters || []).map((character) => ({
+      id: String(character.id),
+      name: character.name,
+      enemy: false,
+      user_id: character.user_id
+    })),
+    ...enemies.map((enemy) => ({
+      id: `enemy:${enemy.id}`,
+      name: enemy.name,
+      enemy: true,
+      user_id: null
+    }))
+  ], [campaign, enemies]);
+
+  const tokenById = useMemo(
+    () => Object.fromEntries(tokenCatalog.map((token) => [token.id, token])),
+    [tokenCatalog]
+  );
+
+  function tokenPosition(tokenId) {
+    const index = tokenCatalog.findIndex((token) => token.id === String(tokenId));
+    return positions[tokenId] || defaultPosition(Math.max(0, index));
+  }
+
+  async function startCombat() {
+    const order = tokenCatalog
+      .map((token) => ({ id: token.id, initiative: Math.floor(Math.random() * 20) + 1 }))
+      .sort((a, b) => b.initiative - a.initiative);
+    if (!order.length) return;
+    setSelectedTarget(order[1]?.id || '');
+    await saveBoardState({
+      combat: { active: true, order, turn_index: 0, round: 1, effect: null }
+    });
+  }
+
+  async function changeTurn(direction) {
+    const combat = boardState.combat;
+    if (!combat.order.length) return;
+    let turnIndex = combat.turn_index + direction;
+    let round = combat.round;
+    if (turnIndex >= combat.order.length) {
+      turnIndex = 0;
+      round += 1;
+    } else if (turnIndex < 0) {
+      turnIndex = combat.order.length - 1;
+      round = Math.max(1, round - 1);
+    }
+    await saveBoardState({ combat: { turn_index: turnIndex, round, effect: null } });
+  }
+
+  async function animateAttack() {
+    const attacker = boardState.combat.order[boardState.combat.turn_index]?.id;
+    const target = selectedTarget && selectedTarget !== attacker
+      ? selectedTarget
+      : tokenCatalog.find((token) => token.id !== attacker)?.id;
+    if (!attacker || !target) return;
+    await saveBoardState({
+      combat: {
+        effect: {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          type: 'attack',
+          attacker,
+          target
+        }
+      }
+    });
+  }
+
+  const activeTokenId = boardState.combat.active
+    ? boardState.combat.order[boardState.combat.turn_index]?.id
+    : '';
+  const attackEffect = boardState.combat.effect;
+  const visionTokens = campaign?.is_owner
+    ? tokenCatalog.filter((token) => !token.enemy)
+    : tokenCatalog.filter((token) => !token.enemy && token.user_id === campaign?.current_user_id);
+  const visionCells = useMemo(
+    () => visibleBoardCells(boardState, visionTokens.map((token) => tokenPosition(token.id))),
+    [boardState, visionTokens, positions]
+  );
+
+  useEffect(() => {
+    if (!activeTokenId) return;
+    const target = tokenCatalog.find((token) => token.id !== activeTokenId)?.id || '';
+    setSelectedTarget(target);
+  }, [activeTokenId, tokenCatalog.length]);
+
   if (!campaign && !error) return <main className="centerPage">Preparando a mesa...</main>;
 
   return (
@@ -2983,10 +3286,63 @@ function CampaignBoard({ go, id }) {
 
       <div className="battleLayout">
         <section className="mapPanel">
+          <div className="boardControlBar">
+            <span className={`liveSync${syncing ? ' syncing' : ''}`}>
+              <i />{syncing ? 'Sincronizando...' : syncedAt ? 'Mesa sincronizada' : 'Conectando...'}
+            </span>
+            {campaign?.is_owner && (
+              <div className="boardMasterTools">
+                <button
+                  className={boardState.physics_enabled ? 'active' : ''}
+                  onClick={() => saveBoardState({ physics_enabled: !boardState.physics_enabled })}
+                  title="Colisão com paredes e objetos"
+                >
+                  <Shield size={16} />Física
+                </button>
+                <button
+                  className={boardState.fog_enabled ? 'active' : ''}
+                  onClick={() => saveBoardState({ fog_enabled: !boardState.fog_enabled })}
+                  title="Névoa de guerra"
+                >
+                  {boardState.fog_enabled ? <EyeOff size={16} /> : <Eye size={16} />}
+                  Névoa
+                </button>
+                <label><Crosshair size={15} />Visão
+                  <select
+                    value={boardState.vision_radius}
+                    onChange={(event) => saveBoardState({ vision_radius: Number(event.target.value) })}
+                  >
+                    {[2, 3, 4, 5, 6, 8, 10, 12].map((value) => (
+                      <option value={value} key={value}>{value} quadrados</option>
+                    ))}
+                  </select>
+                </label>
+                <label><CloudRain size={15} />Clima
+                  <select
+                    value={boardState.weather}
+                    onChange={(event) => saveBoardState({ weather: event.target.value })}
+                  >
+                    <option value="clear">Limpo</option>
+                    <option value="rain">Chuva</option>
+                    <option value="snow">Neve</option>
+                    <option value="mist">Neblina</option>
+                    <option value="storm">Tempestade</option>
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
           <div
             ref={boardRef}
-            className={`battleMap${mapImage ? ' hasMap' : ''}`}
-            style={mapImage ? { backgroundImage: `linear-gradient(rgba(18, 11, 8, .08), rgba(18, 11, 8, .2)), url("${mapImage}")` } : undefined}
+            className={`battleMap${mapImage ? ' hasMap' : ''}${boardState.combat.active ? ' combatActive' : ''}`}
+            style={{
+              ...(mapImage
+                ? { backgroundImage: `linear-gradient(rgba(18, 11, 8, .08), rgba(18, 11, 8, .2)), url("${mapImage}")` }
+                : {}),
+              ...(boardState.grid.width && boardState.grid.height
+                ? { aspectRatio: `${boardState.grid.width} / ${boardState.grid.height}` }
+                : {})
+            }}
           >
             {!mapImage && (
               <div className="emptyMap">
@@ -2999,11 +3355,13 @@ function CampaignBoard({ go, id }) {
               const tokenId = String(character.id);
               const position = positions[tokenId] || defaultPosition(index);
               const movable = canMove(character);
+              const attacking = attackEffect?.attacker === tokenId;
+              const hit = attackEffect?.target === tokenId;
               return (
                 <button
                   type="button"
-                  key={character.id}
-                  className={`characterToken${movable ? ' movable' : ''}`}
+                  key={`${character.id}-${attacking || hit ? attackEffect?.id : 'idle'}`}
+                  className={`characterToken${movable ? ' movable' : ''}${draggingToken === tokenId ? ' dragging' : ''}${collisionToken === tokenId ? ' collision' : ''}${activeTokenId === tokenId ? ' activeTurn' : ''}${attacking ? ' attacking' : ''}${hit ? ' hit' : ''}`}
                   style={{ left: `${position.x}%`, top: `${position.y}%` }}
                   title={`${character.name}${movable ? ' — arraste para mover' : ''}`}
                   onPointerDown={(event) => startTokenDrag(event, tokenId, movable)}
@@ -3023,11 +3381,13 @@ function CampaignBoard({ go, id }) {
             {enemies.map((enemy, index) => {
               const tokenId = `enemy:${enemy.id}`;
               const position = positions[tokenId] || defaultPosition((campaign?.characters.length || 0) + index);
+              const attacking = attackEffect?.attacker === tokenId;
+              const hit = attackEffect?.target === tokenId;
               return (
                 <button
                   type="button"
-                  key={tokenId}
-                  className={`characterToken enemyToken${campaign?.is_owner ? ' movable' : ''}`}
+                  key={`${tokenId}-${attacking || hit ? attackEffect?.id : 'idle'}`}
+                  className={`characterToken enemyToken${campaign?.is_owner ? ' movable' : ''}${draggingToken === tokenId ? ' dragging' : ''}${collisionToken === tokenId ? ' collision' : ''}${activeTokenId === tokenId ? ' activeTurn' : ''}${attacking ? ' attacking' : ''}${hit ? ' hit' : ''}`}
                   style={{ left: `${position.x}%`, top: `${position.y}%` }}
                   title={`${enemy.name} — ${enemy.current_health}/${enemy.health} de Saúde`}
                   onPointerDown={(event) => startTokenDrag(event, tokenId, campaign?.is_owner)}
@@ -3041,16 +3401,134 @@ function CampaignBoard({ go, id }) {
                 </button>
               );
             })}
+            {boardState.fog_enabled && boardState.grid.width > 0 && boardState.grid.height > 0 && (
+              <svg
+                className={`battleFog${campaign?.is_owner ? ' masterPreview' : ''}`}
+                viewBox={`0 0 ${boardState.grid.width} ${boardState.grid.height}`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <defs>
+                  <mask id={`battle-fog-${id}`}>
+                    <rect width={boardState.grid.width} height={boardState.grid.height} fill="white" />
+                    {visionCells.map((cellIndex) => (
+                      <rect
+                        key={cellIndex}
+                        x={(cellIndex % boardState.grid.width) - .03}
+                        y={Math.floor(cellIndex / boardState.grid.width) - .03}
+                        width="1.06"
+                        height="1.06"
+                        rx=".13"
+                        fill="black"
+                      />
+                    ))}
+                  </mask>
+                </defs>
+                <rect
+                  width={boardState.grid.width}
+                  height={boardState.grid.height}
+                  mask={`url(#battle-fog-${id})`}
+                />
+              </svg>
+            )}
+            {attackEffect?.attacker && attackEffect?.target && (
+              <svg
+                className="combatEffects"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                key={attackEffect.id}
+                aria-hidden="true"
+              >
+                <line
+                  x1={tokenPosition(attackEffect.attacker).x}
+                  y1={tokenPosition(attackEffect.attacker).y}
+                  x2={tokenPosition(attackEffect.target).x}
+                  y2={tokenPosition(attackEffect.target).y}
+                />
+                <circle
+                  cx={tokenPosition(attackEffect.target).x}
+                  cy={tokenPosition(attackEffect.target).y}
+                  r="3.4"
+                />
+              </svg>
+            )}
+            {boardState.weather !== 'clear' && (
+              <div className={`weatherLayer weather-${boardState.weather}`} aria-hidden="true">
+                {(boardState.weather === 'rain' || boardState.weather === 'storm') && Array.from({ length: 42 }, (_, index) => (
+                  <i
+                    key={index}
+                    style={{
+                      left: `${(index * 29) % 105}%`,
+                      animationDelay: `${-(index % 13) * .17}s`,
+                      animationDuration: `${.65 + (index % 5) * .08}s`
+                    }}
+                  />
+                ))}
+                {boardState.weather === 'snow' && Array.from({ length: 36 }, (_, index) => (
+                  <i
+                    key={index}
+                    style={{
+                      left: `${(index * 37) % 102}%`,
+                      animationDelay: `${-(index % 15) * .32}s`,
+                      animationDuration: `${4.2 + (index % 7) * .45}s`
+                    }}
+                  />
+                ))}
+                {boardState.weather === 'storm' && <b className="lightningFlash" />}
+              </div>
+            )}
           </div>
           <div className="tokenLegend">
             <span><i className="legendDot yours" />Movimentável</span>
             <span><i className="legendDot others" />Somente visualização</span>
             <span><i className="legendDot enemy" />Inimigo</span>
-            <small>Arraste livremente para qualquer ponto do mapa.</small>
+            <small>Paredes, objetos, visão, clima e turnos são sincronizados.</small>
           </div>
         </section>
 
         <aside className="dicePanel">
+          <div className="combatPanel">
+            <div className="combatTitle">
+              <Swords size={22} />
+              <div>
+                <h2>Combate</h2>
+                <span>{boardState.combat.active ? `Rodada ${boardState.combat.round}` : 'Fora de combate'}</span>
+              </div>
+              {campaign?.is_owner && (
+                boardState.combat.active
+                  ? <button title="Encerrar combate" onClick={() => saveBoardState({ combat: { active: false, effect: null } })}><Pause size={16} /></button>
+                  : <button title="Iniciar combate" onClick={startCombat}><Play size={16} /></button>
+              )}
+            </div>
+            {boardState.combat.active && (
+              <>
+                <div className="initiativeOrder">
+                  {boardState.combat.order.map((entry, index) => (
+                    <div className={index === boardState.combat.turn_index ? 'active' : ''} key={entry.id}>
+                      <span>{index + 1}</span>
+                      <strong>{tokenById[entry.id]?.name || 'Combatente removido'}</strong>
+                      <b>{entry.initiative}</b>
+                    </div>
+                  ))}
+                </div>
+                {campaign?.is_owner && (
+                  <div className="combatActions">
+                    <div>
+                      <button title="Turno anterior" onClick={() => changeTurn(-1)}><SkipBack size={16} /></button>
+                      <button title="Próximo turno" onClick={() => changeTurn(1)}><SkipForward size={16} /></button>
+                    </div>
+                    <select value={selectedTarget} onChange={(event) => setSelectedTarget(event.target.value)}>
+                      {tokenCatalog
+                        .filter((token) => token.id !== activeTokenId)
+                        .map((token) => <option value={token.id} key={token.id}>{token.name}</option>)}
+                    </select>
+                    <button className="attackButton" onClick={animateAttack}><Zap size={16} />Atacar</button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           <div className="diceTitle">
             <Dices size={25} />
             <div>

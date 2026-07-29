@@ -1630,6 +1630,79 @@ textarea {
   padding: 10px;
 }
 
+.boardControlBar {
+  min-height: 45px;
+  padding: 0 2px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.liveSync {
+  color: #9fc68e;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.liveSync i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #63bf66;
+  box-shadow: 0 0 9px rgba(99, 191, 102, .8);
+  animation: syncPulse 1.6s ease-in-out infinite;
+}
+
+.liveSync.syncing i {
+  background: #d6a95a;
+  box-shadow: 0 0 9px rgba(214, 169, 90, .8);
+  animation-duration: .55s;
+}
+
+@keyframes syncPulse {
+  50% { opacity: .35; transform: scale(.72); }
+}
+
+.boardMasterTools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.boardMasterTools button,
+.boardMasterTools label {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid #654329;
+  border-radius: 5px;
+  background: #21120d;
+  color: #cbb48b;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.boardMasterTools button.active {
+  border-color: #d6a95a;
+  background: #62140f;
+  color: #ffe2a9;
+}
+
+.boardMasterTools select {
+  width: auto;
+  min-width: 82px;
+  padding: 4px 6px;
+  font-size: 9px;
+}
+
 .battleMap {
   position: relative;
   width: 100%;
@@ -1651,7 +1724,7 @@ textarea {
 .battleMap.hasMap {
   background-position: center;
   background-repeat: no-repeat;
-  background-size: cover;
+  background-size: 100% 100%;
 }
 
 .battleMap::after {
@@ -1705,6 +1778,7 @@ textarea {
   cursor: default;
   touch-action: none;
   filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .65));
+  transition: left .24s ease-out, top .24s ease-out, filter .2s ease;
 }
 
 .characterToken:hover {
@@ -1719,6 +1793,189 @@ textarea {
 .characterToken.movable:active {
   z-index: 5;
   cursor: grabbing;
+}
+
+.characterToken.dragging {
+  z-index: 7;
+  transition: none;
+}
+
+.characterToken.activeTurn .tokenPortrait {
+  box-shadow:
+    0 0 0 3px #fff1a8,
+    0 0 0 7px rgba(136, 28, 19, .85),
+    0 0 25px rgba(255, 206, 89, .85);
+  animation: activeTurnPulse 1.25s ease-in-out infinite;
+}
+
+.characterToken.attacking {
+  z-index: 9;
+  animation: tokenAttack .72s cubic-bezier(.2, .8, .2, 1);
+}
+
+.characterToken.hit {
+  z-index: 8;
+  animation: tokenHit .7s ease-out;
+}
+
+.characterToken.collision {
+  animation: tokenCollision .24s ease-in-out;
+}
+
+@keyframes activeTurnPulse {
+  50% { filter: brightness(1.18); }
+}
+
+@keyframes tokenAttack {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  38% { transform: translate(-50%, -50%) scale(1.28) rotate(-5deg); }
+  65% { transform: translate(-50%, -50%) scale(.94) rotate(3deg); }
+}
+
+@keyframes tokenHit {
+  0%, 100% { transform: translate(-50%, -50%); filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .65)); }
+  25% { transform: translate(calc(-50% - 8px), -50%) rotate(-7deg); filter: sepia(1) saturate(5) drop-shadow(0 0 12px #ff3b22); }
+  55% { transform: translate(calc(-50% + 7px), -50%) rotate(5deg); }
+}
+
+@keyframes tokenCollision {
+  0%, 100% { transform: translate(-50%, -50%); }
+  30% { transform: translate(calc(-50% - 5px), -50%); }
+  65% { transform: translate(calc(-50% + 5px), -50%); }
+}
+
+.battleFog,
+.combatEffects,
+.weatherLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.battleFog {
+  z-index: 8;
+  filter: drop-shadow(0 0 7px rgba(0, 0, 0, .9));
+}
+
+.battleFog > rect {
+  fill: rgba(3, 7, 10, .985);
+}
+
+.battleFog.masterPreview > rect {
+  fill: rgba(4, 7, 9, .58);
+}
+
+.combatEffects {
+  z-index: 10;
+  overflow: visible;
+}
+
+.combatEffects line {
+  stroke: #ffda67;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 6px #ff5e21);
+  stroke-dasharray: 12 8;
+  animation: attackTrail .62s ease-out both;
+}
+
+.combatEffects circle {
+  fill: transparent;
+  stroke: #ff6b32;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 8px #ffcf61);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: attackImpact .72s ease-out both;
+}
+
+@keyframes attackTrail {
+  from { opacity: 0; stroke-dashoffset: 70; }
+  35% { opacity: 1; }
+  to { opacity: 0; stroke-dashoffset: 0; }
+}
+
+@keyframes attackImpact {
+  0%, 35% { opacity: 0; transform: scale(.15); }
+  55% { opacity: 1; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(2.5); }
+}
+
+.weatherLayer {
+  z-index: 11;
+  overflow: hidden;
+}
+
+.weather-rain,
+.weather-storm {
+  background: linear-gradient(180deg, rgba(17, 31, 45, .08), rgba(12, 24, 39, .2));
+}
+
+.weather-rain i,
+.weather-storm i {
+  position: absolute;
+  top: -18%;
+  width: 1px;
+  height: 15%;
+  opacity: .7;
+  background: linear-gradient(transparent, rgba(191, 222, 245, .9));
+  transform: rotate(12deg);
+  animation: weatherRain linear infinite;
+}
+
+@keyframes weatherRain {
+  to { top: 108%; transform: translateX(-75px) rotate(12deg); }
+}
+
+.weather-snow i {
+  position: absolute;
+  top: -8%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(241, 249, 255, .9);
+  box-shadow: 0 0 5px rgba(255, 255, 255, .65);
+  animation: weatherSnow linear infinite;
+}
+
+@keyframes weatherSnow {
+  45% { transform: translateX(28px) rotate(120deg); }
+  to { top: 106%; transform: translateX(-18px) rotate(280deg); }
+}
+
+.weather-mist {
+  background:
+    radial-gradient(ellipse at 15% 40%, rgba(225, 232, 221, .44), transparent 42%),
+    radial-gradient(ellipse at 78% 65%, rgba(211, 222, 216, .38), transparent 48%);
+  backdrop-filter: contrast(.82) saturate(.66);
+  animation: weatherMist 8s ease-in-out infinite alternate;
+}
+
+@keyframes weatherMist {
+  from { transform: translateX(-3%) scale(1.08); opacity: .7; }
+  to { transform: translateX(3%) scale(1.12); opacity: .95; }
+}
+
+.weather-storm {
+  background-color: rgba(6, 15, 27, .28);
+}
+
+.lightningFlash {
+  position: absolute;
+  inset: 0;
+  background: rgba(220, 236, 255, .85);
+  opacity: 0;
+  animation: lightningFlash 5.8s steps(1) infinite;
+}
+
+@keyframes lightningFlash {
+  0%, 86%, 89%, 92%, 100% { opacity: 0; }
+  87%, 90% { opacity: .78; }
+  88%, 91% { opacity: .16; }
 }
 
 .tokenPortrait {
@@ -1830,6 +2087,116 @@ textarea {
   position: sticky;
   top: 90px;
   padding: 18px;
+}
+
+.combatPanel {
+  margin: -4px -4px 18px;
+  padding: 12px;
+  border: 1px solid #744329;
+  border-radius: 7px;
+  background:
+    linear-gradient(145deg, rgba(100, 20, 15, .32), transparent 55%),
+    #1d100b;
+}
+
+.combatTitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.combatTitle > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.combatTitle h2 {
+  margin: 0;
+  font-family: Cinzel, serif;
+  font-size: 15px;
+}
+
+.combatTitle span {
+  color: #bba176;
+  font-size: 9px;
+}
+
+.combatTitle > button {
+  width: 32px;
+  min-height: 30px;
+  padding: 4px;
+}
+
+.initiativeOrder {
+  max-height: 190px;
+  margin-top: 10px;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+.initiativeOrder > div {
+  min-height: 31px;
+  padding: 4px 7px;
+  border: 1px solid #4f3120;
+  border-radius: 4px;
+  background: #24140e;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 5px;
+}
+
+.initiativeOrder > div.active {
+  border-color: #f0c875;
+  background: #631510;
+  box-shadow: inset 3px 0 #f0c875, 0 0 12px rgba(210, 75, 40, .22);
+}
+
+.initiativeOrder span,
+.initiativeOrder b {
+  color: #d6a95a;
+  font-family: Cinzel, serif;
+  font-size: 10px;
+  text-align: center;
+}
+
+.initiativeOrder strong {
+  overflow: hidden;
+  color: #eed7aa;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combatActions {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.combatActions > div {
+  display: flex;
+  gap: 4px;
+}
+
+.combatActions button {
+  min-height: 32px;
+  padding: 5px 7px;
+}
+
+.combatActions select {
+  min-width: 0;
+  padding: 6px;
+  font-size: 10px;
+}
+
+.combatActions .attackButton {
+  grid-column: 1 / -1;
+  border-color: #a23e26;
+  background: #72160f;
+  color: #ffe0b1;
 }
 
 .diceTitle {
