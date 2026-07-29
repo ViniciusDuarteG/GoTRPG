@@ -2131,10 +2131,17 @@ class Handler(BaseHTTPRequestHandler):
             board_state = clean_board_state(json.loads(board["board_state"])) if board else clean_board_state({})
         except (json.JSONDecodeError, TypeError):
             board_state = clean_board_state({})
+        map_image = board["map_image"] if board else ""
+        if map_image and (
+            not board_state["grid"]["width"]
+            or not board_state["grid"]["height"]
+        ):
+            board_state["grid"]["width"] = 24
+            board_state["grid"]["height"] = 14
         self.send_json(
             200,
             {
-                "map_image": board["map_image"] if board else "",
+                "map_image": map_image,
                 "token_positions": token_positions,
                 "board_state": board_state,
                 "updated_at": board["updated_at"] if board else None,
@@ -2215,6 +2222,13 @@ class Handler(BaseHTTPRequestHandler):
                 if candidate and not re.match(r"^data:image/(?:png|jpeg|webp);base64,", candidate):
                     return self.send_json(400, {"detail": "Formato de mapa inválido"})
                 map_image = candidate
+
+            if map_image and (
+                not board_state["grid"]["width"]
+                or not board_state["grid"]["height"]
+            ):
+                board_state["grid"]["width"] = 24
+                board_state["grid"]["height"] = 14
 
             submitted_positions = payload.get("token_positions")
             if isinstance(submitted_positions, dict):

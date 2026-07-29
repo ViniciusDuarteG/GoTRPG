@@ -3256,7 +3256,14 @@ function CampaignBoard({ go, id }) {
   function applyBoard(data, includePositions = true) {
     if ('map_image' in data) setMapImage(data.map_image || '');
     if (Array.isArray(data.rolls)) setRolls(data.rolls);
-    if (data.board_state) setBoardState(normalizeBoardState(data.board_state));
+    if (data.board_state) {
+      const normalized = normalizeBoardState(data.board_state);
+      if (data.map_image && (!normalized.grid.width || !normalized.grid.height)) {
+        normalized.grid.width = 24;
+        normalized.grid.height = 14;
+      }
+      setBoardState(normalized);
+    }
     if (includePositions) {
       setPositions(data.token_positions || {});
     }
