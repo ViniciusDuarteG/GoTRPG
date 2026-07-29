@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import mimetypes
 import os
 import re
@@ -290,6 +291,40 @@ def clean_character_data(data: object) -> dict | None:
     return cleaned
 
 
+def clean_enemy_data(payload: object, fallback: dict | None = None) -> tuple[str, dict, int] | None:
+    if not isinstance(payload, dict):
+        return None
+    base = dict(fallback or {})
+    base.update(payload)
+    name = str(base.get("name", "")).strip()[:120]
+    if not name:
+        return None
+
+    def number(field: str, default: int, minimum: int = 0, maximum: int = 999) -> int:
+        try:
+            value = int(float(base.get(field, default)))
+        except (TypeError, ValueError):
+            value = default
+        return min(maximum, max(minimum, value))
+
+    health = number("health", 9, 1, 999)
+    current_health = number("current_health", health, 0, health)
+    data = {
+        "category": str(base.get("category", "Humanoide")).strip()[:50] or "Humanoide",
+        "threat": str(base.get("threat", "Comum")).strip()[:40] or "Comum",
+        "combat_defense": number("combat_defense", 6, 0, 99),
+        "health": health,
+        "armor": number("armor", 0, 0, 99),
+        "movement": number("movement", 3, 0, 99),
+        "attack": str(base.get("attack", "Ataque")).strip()[:160],
+        "damage": str(base.get("damage", "1")).strip()[:80],
+        "abilities": str(base.get("abilities", "")).strip()[:4000],
+        "notes": str(base.get("notes", "")).strip()[:4000],
+        "source": str(base.get("source", "Personalizado")).strip()[:160] or "Personalizado",
+    }
+    return name, data, current_health
+
+
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -370,6 +405,50 @@ def init_db() -> None:
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (campaign_id, session_number),
                 FOREIGN KEY(campaign_id) REFERENCES campaigns(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campaign_boards (
+                campaign_id INTEGER PRIMARY KEY,
+                map_image TEXT NOT NULL DEFAULT '',
+                token_positions TEXT NOT NULL DEFAULT '{}',
+                updated_at INTEGER NOT NULL,
+                updated_by INTEGER NOT NULL,
+                FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY(updated_by) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campaign_rolls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                notation TEXT NOT NULL,
+                results TEXT NOT NULL,
+                total INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campaign_enemies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                data TEXT NOT NULL,
+                current_health INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY(created_by) REFERENCES users(id)
             )
             """
         )
@@ -478,6 +557,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.create_campaign()
             if path.startswith("/campaigns/join/"):
                 return self.join_campaign(path)
+            if path.startswith("/campaigns/") and path.endswith("/rolls"):
+                return self.roll_campaign_dice(path)
+            if path.startswith("/campaigns/") and path.endswith("/enemies"):
+                return self.create_campaign_enemy(path)
             if path.startswith("/campaigns/") and path.endswith("/characters"):
                 return self.add_campaign_character(path)
             self.send_json(404, {"detail": "Rota não encontrada"})
@@ -501,6 +584,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.list_campaigns()
         if path.startswith("/campaigns/invite/"):
             return self.get_campaign_invite(path)
+        if path.startswith("/campaigns/") and path.endswith("/board"):
+            return self.get_campaign_board(path)
+        if path.startswith("/campaigns/") and path.endswith("/enemies"):
+            return self.list_campaign_enemies(path)
         if path.startswith("/campaigns/"):
             return self.get_campaign(path)
         self.send_json(404, {"detail": "Rota não encontrada"})
@@ -536,6 +623,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.update_character(path)
             if path.startswith("/campaigns/") and path.endswith("/diary"):
                 return self.update_campaign_diary(path)
+            if path.startswith("/campaigns/") and path.endswith("/board"):
+                return self.update_campaign_board(path)
+            if path.startswith("/campaigns/") and "/enemies/" in path:
+                return self.update_campaign_enemy(path)
             if path.startswith("/campaigns/"):
                 return self.update_campaign(path)
             self.send_json(404, {"detail": "Rota não encontrada"})
@@ -549,6 +640,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.delete_character(path)
         if path.startswith("/campaigns/") and "/characters/" in path:
             return self.remove_campaign_character(path)
+        if path.startswith("/campaigns/") and "/enemies/" in path:
+            return self.delete_campaign_enemy(path)
         if path.startswith("/campaigns/"):
             return self.delete_campaign(path)
         self.send_json(404, {"detail": "Rota não encontrada"})
@@ -716,6 +809,21 @@ class Handler(BaseHTTPRequestHandler):
             (user_id, campaign_id, user_id),
         ).fetchone()
 
+    def enemy_json(self, row: sqlite3.Row) -> dict:
+        try:
+            data = json.loads(row["data"])
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        return {
+            "id": row["id"],
+            "campaign_id": row["campaign_id"],
+            "name": row["name"],
+            "current_health": row["current_health"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            **data,
+        }
+
     def list_campaigns(self) -> None:
         user_id = self.user_id()
         if not user_id:
@@ -837,6 +945,358 @@ class Handler(BaseHTTPRequestHandler):
             },
         )
 
+    def list_campaign_enemies(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            rows = conn.execute(
+                """
+                SELECT id, campaign_id, name, data, current_health, created_at, updated_at
+                FROM campaign_enemies
+                WHERE campaign_id = ?
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (campaign_id,),
+            ).fetchall()
+        self.send_json(200, [self.enemy_json(row) for row in rows])
+
+    def create_campaign_enemy(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        cleaned = clean_enemy_data(self.read_json())
+        if not cleaned:
+            return self.send_json(400, {"detail": "Dados do inimigo inválidos"})
+        name, data, current_health = cleaned
+        now = int(time.time())
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre cria inimigos"})
+            cursor = conn.execute(
+                """
+                INSERT INTO campaign_enemies
+                    (campaign_id, created_by, name, data, current_health, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (campaign_id, user_id, name, json.dumps(data, ensure_ascii=False), current_health, now, now),
+            )
+            enemy_id = int(cursor.lastrowid)
+            row = conn.execute(
+                """
+                SELECT id, campaign_id, name, data, current_health, created_at, updated_at
+                FROM campaign_enemies
+                WHERE id = ?
+                """,
+                (enemy_id,),
+            ).fetchone()
+        self.send_json(200, self.enemy_json(row))
+
+    def update_campaign_enemy(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, enemy_id = parts[1], parts[3]
+        payload = self.read_json()
+        now = int(time.time())
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre altera inimigos"})
+            existing = conn.execute(
+                """
+                SELECT id, campaign_id, name, data, current_health, created_at, updated_at
+                FROM campaign_enemies
+                WHERE id = ? AND campaign_id = ?
+                """,
+                (enemy_id, campaign_id),
+            ).fetchone()
+            if not existing:
+                return self.send_json(404, {"detail": "Inimigo não encontrado"})
+            try:
+                fallback_data = json.loads(existing["data"])
+            except (json.JSONDecodeError, TypeError):
+                fallback_data = {}
+            fallback = {
+                "name": existing["name"],
+                "current_health": existing["current_health"],
+                **fallback_data,
+            }
+            cleaned = clean_enemy_data(payload, fallback)
+            if not cleaned:
+                return self.send_json(400, {"detail": "Dados do inimigo inválidos"})
+            name, data, current_health = cleaned
+            conn.execute(
+                """
+                UPDATE campaign_enemies
+                SET name = ?, data = ?, current_health = ?, updated_at = ?
+                WHERE id = ? AND campaign_id = ?
+                """,
+                (name, json.dumps(data, ensure_ascii=False), current_health, now, enemy_id, campaign_id),
+            )
+            row = conn.execute(
+                """
+                SELECT id, campaign_id, name, data, current_health, created_at, updated_at
+                FROM campaign_enemies
+                WHERE id = ?
+                """,
+                (enemy_id,),
+            ).fetchone()
+        self.send_json(200, self.enemy_json(row))
+
+    def delete_campaign_enemy(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        parts = path.strip("/").split("/")
+        campaign_id, enemy_id = parts[1], parts[3]
+        with db() as conn:
+            campaign = conn.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+                (campaign_id, user_id),
+            ).fetchone()
+            if not campaign:
+                return self.send_json(403, {"detail": "Apenas o mestre remove inimigos"})
+            cursor = conn.execute(
+                "DELETE FROM campaign_enemies WHERE id = ? AND campaign_id = ?",
+                (enemy_id, campaign_id),
+            )
+            board = conn.execute(
+                "SELECT token_positions FROM campaign_boards WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()
+            if board:
+                try:
+                    positions = json.loads(board["token_positions"])
+                except (json.JSONDecodeError, TypeError):
+                    positions = {}
+                positions.pop(f"enemy:{enemy_id}", None)
+                conn.execute(
+                    "UPDATE campaign_boards SET token_positions = ? WHERE campaign_id = ?",
+                    (json.dumps(positions, separators=(",", ":")), campaign_id),
+                )
+        if cursor.rowcount == 0:
+            return self.send_json(404, {"detail": "Inimigo não encontrado"})
+        self.send_json(200, {"deleted": True})
+
+    def get_campaign_board(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            board = conn.execute(
+                """
+                SELECT map_image, token_positions, updated_at
+                FROM campaign_boards
+                WHERE campaign_id = ?
+                """,
+                (campaign_id,),
+            ).fetchone()
+            rolls = conn.execute(
+                """
+                SELECT cr.id, cr.notation, cr.results, cr.total, cr.created_at, u.username
+                FROM campaign_rolls cr
+                JOIN users u ON u.id = cr.user_id
+                WHERE cr.campaign_id = ?
+                ORDER BY cr.id DESC
+                LIMIT 30
+                """,
+                (campaign_id,),
+            ).fetchall()
+        try:
+            token_positions = json.loads(board["token_positions"]) if board else {}
+        except (json.JSONDecodeError, TypeError):
+            token_positions = {}
+        self.send_json(
+            200,
+            {
+                "map_image": board["map_image"] if board else "",
+                "token_positions": token_positions,
+                "updated_at": board["updated_at"] if board else None,
+                "rolls": [
+                    {
+                        "id": row["id"],
+                        "notation": row["notation"],
+                        "results": json.loads(row["results"]),
+                        "total": row["total"],
+                        "created_at": row["created_at"],
+                        "username": row["username"],
+                    }
+                    for row in rolls
+                ],
+            },
+        )
+
+    def update_campaign_board(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        payload = self.read_json()
+        now = int(time.time())
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            is_owner = campaign["owner_id"] == user_id
+            current = conn.execute(
+                "SELECT map_image, token_positions FROM campaign_boards WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()
+            map_image = current["map_image"] if current else ""
+            try:
+                positions = json.loads(current["token_positions"]) if current else {}
+            except (json.JSONDecodeError, TypeError):
+                positions = {}
+
+            if "map_image" in payload:
+                if not is_owner:
+                    return self.send_json(403, {"detail": "Apenas o mestre altera o mapa"})
+                candidate = str(payload.get("map_image") or "")
+                if len(candidate) > 4_500_000:
+                    return self.send_json(413, {"detail": "Mapa muito grande"})
+                if candidate and not re.match(r"^data:image/(?:png|jpeg|webp);base64,", candidate):
+                    return self.send_json(400, {"detail": "Formato de mapa inválido"})
+                map_image = candidate
+
+            submitted_positions = payload.get("token_positions")
+            if isinstance(submitted_positions, dict):
+                character_rows = conn.execute(
+                    """
+                    SELECT ch.id, ch.user_id
+                    FROM campaign_characters cc
+                    JOIN characters ch ON ch.id = cc.character_id
+                    WHERE cc.campaign_id = ?
+                    """,
+                    (campaign_id,),
+                ).fetchall()
+                character_owners = {str(row["id"]): row["user_id"] for row in character_rows}
+                enemy_ids = {
+                    f"enemy:{row['id']}"
+                    for row in conn.execute(
+                        "SELECT id FROM campaign_enemies WHERE campaign_id = ?",
+                        (campaign_id,),
+                    ).fetchall()
+                }
+                for character_id, position in submitted_positions.items():
+                    character_id = str(character_id)
+                    is_enemy = character_id in enemy_ids
+                    if character_id not in character_owners and not is_enemy:
+                        continue
+                    if not is_owner and (is_enemy or character_owners[character_id] != user_id):
+                        continue
+                    if not isinstance(position, dict):
+                        continue
+                    try:
+                        x = float(position.get("x"))
+                        y = float(position.get("y"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not math.isfinite(x) or not math.isfinite(y):
+                        continue
+                    positions[character_id] = {
+                        "x": round(min(100, max(0, x)), 3),
+                        "y": round(min(100, max(0, y)), 3),
+                    }
+
+            encoded_positions = json.dumps(positions, separators=(",", ":"))
+            cursor = conn.execute(
+                """
+                UPDATE campaign_boards
+                SET map_image = ?, token_positions = ?, updated_at = ?, updated_by = ?
+                WHERE campaign_id = ?
+                """,
+                (map_image, encoded_positions, now, user_id, campaign_id),
+            )
+            if cursor.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT INTO campaign_boards
+                        (campaign_id, map_image, token_positions, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (campaign_id, map_image, encoded_positions, now, user_id),
+                )
+        self.send_json(
+            200,
+            {
+                "map_image": map_image,
+                "token_positions": positions,
+                "updated_at": now,
+            },
+        )
+
+    def roll_campaign_dice(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        campaign_id = path.strip("/").split("/")[1]
+        payload = self.read_json()
+        try:
+            sides = int(payload.get("sides"))
+            quantity = int(payload.get("quantity", 1))
+        except (TypeError, ValueError):
+            return self.send_json(400, {"detail": "Dados inválidos"})
+        if sides not in {4, 6, 8, 10, 12, 20, 100} or not 1 <= quantity <= 20:
+            return self.send_json(400, {"detail": "Dados inválidos"})
+        results = [secrets.randbelow(sides) + 1 for _ in range(quantity)]
+        total = sum(results)
+        notation = f"{quantity}d{sides}"
+        now = int(time.time())
+        with db() as conn:
+            campaign = self.campaign_access(conn, campaign_id, user_id)
+            if not campaign:
+                return self.send_json(404, {"detail": "Campanha não encontrada"})
+            username = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()["username"]
+            cursor = conn.execute(
+                """
+                INSERT INTO campaign_rolls
+                    (campaign_id, user_id, notation, results, total, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (campaign_id, user_id, notation, json.dumps(results), total, now),
+            )
+            conn.execute(
+                """
+                DELETE FROM campaign_rolls
+                WHERE campaign_id = ? AND id NOT IN (
+                    SELECT id FROM campaign_rolls
+                    WHERE campaign_id = ?
+                    ORDER BY id DESC
+                    LIMIT 50
+                )
+                """,
+                (campaign_id, campaign_id),
+            )
+        self.send_json(
+            200,
+            {
+                "id": cursor.lastrowid,
+                "notation": notation,
+                "results": results,
+                "total": total,
+                "created_at": now,
+                "username": username,
+            },
+        )
+
     def update_campaign_diary(self, path: str) -> None:
         user_id = self.user_id()
         if not user_id:
@@ -901,6 +1361,9 @@ class Handler(BaseHTTPRequestHandler):
             ).fetchone()
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
+            conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
+            conn.execute("DELETE FROM campaign_boards WHERE campaign_id = ?", (campaign_id,))
+            conn.execute("DELETE FROM campaign_enemies WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))
             conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?", (campaign_id,))

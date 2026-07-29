@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BookOpen, Copy, Eye, Image as ImageIcon, LogOut, Minus, Plus, Save, ScrollText, Shield, Swords, Sword, Trash2, Upload, User, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Copy, Dices, Eye, Heart, Image as ImageIcon, LogOut, Map as MapIcon, Minus, Pencil, Plus, Save, ScrollText, Search, Shield, Skull, Swords, Sword, Trash2, Upload, User, Users, X } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -511,6 +511,290 @@ function withCalculatedDefenses(data) {
   return { ...data, ...calculatedDefenses(data) };
 }
 
+const enemyPresets = [
+  {
+    name: 'Assassino',
+    category: 'Humanoide',
+    threat: 'Perigosa',
+    combat_defense: 6,
+    health: 9,
+    armor: 2,
+    movement: 4,
+    attack: 'Estilete 4D',
+    damage: '3',
+    abilities: 'Perfurante 2; especialista em furtividade e lâminas curtas.',
+    notes: 'Matador contratado para emboscadas e infiltração.',
+    source: 'Livro Básico, p. 268'
+  },
+  {
+    name: 'Bandido',
+    category: 'Humanoide',
+    threat: 'Comum',
+    combat_defense: 4,
+    health: 6,
+    armor: 5,
+    movement: 3,
+    attack: 'Machado 3D+1B',
+    damage: '3',
+    abilities: 'Adaptável; furtivo e habituado aos ermos.',
+    notes: 'Serve como bandoleiro, saqueador ou fora da lei.',
+    source: 'Livro Básico, p. 268'
+  },
+  {
+    name: 'Cavaleiro Errante',
+    category: 'Humanoide',
+    threat: 'Perigosa',
+    combat_defense: 8,
+    health: 12,
+    armor: 5,
+    movement: 3,
+    attack: 'Espada Longa 4D+1B / Lança de Guerra 4D',
+    damage: '4 / 7',
+    abilities: 'Escudo grande defensivo; combate montado.',
+    notes: 'Guerreiro sem terras que vende sua espada.',
+    source: 'Livro Básico, p. 268'
+  },
+  {
+    name: 'Guarda',
+    category: 'Humanoide',
+    threat: 'Comum',
+    combat_defense: 6,
+    health: 9,
+    armor: 5,
+    movement: 3,
+    attack: 'Alabarda 4D',
+    damage: '7',
+    abilities: 'Treinado com armas de haste e atento ao ambiente.',
+    notes: 'Miliciano, sentinela ou soldado de infantaria.',
+    source: 'Livro Básico, p. 268–269'
+  },
+  {
+    name: 'Saqueador do Povo Livre',
+    category: 'Humanoide',
+    threat: 'Comum',
+    combat_defense: 6,
+    health: 9,
+    armor: 2,
+    movement: 4,
+    attack: 'Lança de pedra 4D+1B',
+    damage: '4',
+    abilities: 'Sobrevivência no frio; emboscada nos ermos.',
+    notes: 'Versão genérica das tribos independentes além da Muralha.',
+    source: 'Guia de Campanha, cap. O Norte — Os Selvagens'
+  },
+  {
+    name: 'Saqueador Homem de Ferro',
+    category: 'Humanoide',
+    threat: 'Perigosa',
+    combat_defense: 7,
+    health: 12,
+    armor: 5,
+    movement: 3,
+    attack: 'Machado de Batalha 4D+1B',
+    damage: '5',
+    abilities: 'Abordagem, intimidação e experiência naval.',
+    notes: 'Combatente acostumado à pilhagem costeira.',
+    source: 'Guia de Campanha, cap. As Ilhas de Ferro'
+  },
+  {
+    name: 'Guerreiro do Clã da Montanha',
+    category: 'Humanoide',
+    threat: 'Comum',
+    combat_defense: 6,
+    health: 12,
+    armor: 2,
+    movement: 4,
+    attack: 'Machado 4D+1B',
+    damage: '4',
+    abilities: 'Escalada, emboscada e resistência nas montanhas.',
+    notes: 'Inspirado nos Corvos de Pedra, Homens Queimados e Orelhas Negras.',
+    source: 'Guia de Campanha, cap. O Vale — Clãs da Montanha'
+  },
+  {
+    name: 'Guerreiro Dothraki',
+    category: 'Humanoide',
+    threat: 'Perigosa',
+    combat_defense: 9,
+    health: 12,
+    armor: 0,
+    movement: 5,
+    attack: 'Arakh 5D+1B',
+    damage: '5',
+    abilities: 'Cavalaria veloz; ataque montado e intimidação.',
+    notes: 'Guerreiro nômade do Mar Dothraki.',
+    source: 'Guia de Campanha, cap. Além de Westeros — Os Dothraki'
+  },
+  {
+    name: 'Cão de Guerra',
+    category: 'Animal',
+    threat: 'Baixa',
+    combat_defense: 11,
+    health: 9,
+    armor: 0,
+    movement: 8,
+    attack: 'Mordida 3D',
+    damage: '3',
+    abilities: 'Rastrear 2B; correr, nadar e saltar.',
+    notes: 'Também representa uma matilha selvagem.',
+    source: 'Livro Básico, p. 270'
+  },
+  {
+    name: 'Gato Sombrio',
+    category: 'Animal',
+    threat: 'Perigosa',
+    combat_defense: 13,
+    health: 9,
+    armor: 0,
+    movement: 8,
+    attack: 'Garras 4D',
+    damage: '5',
+    abilities: 'Poderosa; carga em salto; furtividade ampliada à noite.',
+    notes: 'Grande felino das montanhas de Westeros.',
+    source: 'Livro Básico, p. 271'
+  },
+  {
+    name: 'Javali',
+    category: 'Animal',
+    threat: 'Comum',
+    combat_defense: 9,
+    health: 9,
+    armor: 1,
+    movement: 6,
+    attack: 'Presas 3D+1B',
+    damage: '4',
+    abilities: 'Cruel, poderosa e feroz.',
+    notes: 'Agressivo quando provocado.',
+    source: 'Livro Básico, p. 271'
+  },
+  {
+    name: 'Lagarto-Leão',
+    category: 'Animal',
+    threat: 'Perigosa',
+    combat_defense: 10,
+    health: 12,
+    armor: 3,
+    movement: 6,
+    attack: 'Mordida 3D',
+    damage: '6',
+    abilities: 'Agarrar; nadador excelente; pode sofrer ferimentos.',
+    notes: 'Predador dos pântanos e correntes lentas.',
+    source: 'Livro Básico, p. 272'
+  },
+  {
+    name: 'Lobo',
+    category: 'Animal',
+    threat: 'Comum',
+    combat_defense: 11,
+    health: 9,
+    armor: 0,
+    movement: 6,
+    attack: 'Mordida 3D',
+    damage: '3',
+    abilities: 'Derrubar; caçar e rastrear.',
+    notes: 'Pode representar cães de areia de Dorne.',
+    source: 'Livro Básico, p. 272'
+  },
+  {
+    name: 'Lobo Atroz',
+    category: 'Animal',
+    threat: 'Mortal',
+    combat_defense: 11,
+    health: 12,
+    armor: 1,
+    movement: 8,
+    attack: 'Mordida 4D',
+    damage: '5',
+    abilities: 'Cruel, poderosa, carga em salto e derrubar.',
+    notes: 'Predador raro ao sul da Muralha.',
+    source: 'Livro Básico, p. 272'
+  },
+  {
+    name: 'Mamute',
+    category: 'Animal',
+    threat: 'Mortal',
+    combat_defense: 7,
+    health: 18,
+    armor: 10,
+    movement: 4,
+    attack: 'Presas 3D',
+    damage: '10',
+    abilities: 'Atordoante; armadura natural; feroz.',
+    notes: 'Enorme montaria e animal de carga dos gigantes.',
+    source: 'Livro Básico, p. 272'
+  },
+  {
+    name: 'Urso',
+    category: 'Animal',
+    threat: 'Mortal',
+    combat_defense: 9,
+    health: 15,
+    armor: 2,
+    movement: 5,
+    attack: 'Garras 4D / Mordida 4D',
+    damage: '8 / 5',
+    abilities: 'Cruel, lenta, poderosa, perfurante 1 e agarrar.',
+    notes: 'Inclui ursos brancos do extremo norte.',
+    source: 'Livro Básico, p. 272–273'
+  },
+  {
+    name: 'Gigante',
+    category: 'Sobrenatural',
+    threat: 'Mortal',
+    combat_defense: 8,
+    health: 15,
+    armor: 4,
+    movement: 4,
+    attack: 'Porrete 5D+1B',
+    damage: '6',
+    abilities: 'Estilhaçador 2, lento e nascido no frio.',
+    notes: 'Habitante colossal das terras além da Muralha.',
+    source: 'Livro Básico, p. 273'
+  },
+  {
+    name: 'Caminhante Branco',
+    category: 'Sobrenatural',
+    threat: 'Lendária',
+    combat_defense: 15,
+    health: 12,
+    armor: 8,
+    movement: 5,
+    attack: 'Espada Sobrenatural 7D+3B',
+    damage: '4',
+    abilities: 'Cruel, estilhaçadora 1, perfurante 4, aura de frio, cria carniçais, furtivo na neve.',
+    notes: 'O Outro é vulnerável a fogo e vidro dracônico.',
+    source: 'Livro Básico, p. 273–274'
+  },
+  {
+    name: 'Carniçal Humano',
+    category: 'Morto-vivo',
+    threat: 'Perigosa',
+    combat_defense: 4,
+    health: 9,
+    armor: 0,
+    movement: 3,
+    attack: 'Garras 2D',
+    damage: '3',
+    abilities: 'Agarrar; continua lutando mesmo após dano mortal.',
+    notes: 'Cadáver reanimado e leal aos Outros.',
+    source: 'Livro Básico, p. 274'
+  }
+];
+
+const blankEnemy = {
+  name: '',
+  category: 'Humanoide',
+  threat: 'Comum',
+  combat_defense: 6,
+  health: 9,
+  armor: 0,
+  movement: 3,
+  attack: 'Ataque',
+  damage: '1',
+  abilities: '',
+  notes: '',
+  source: 'Personalizado'
+};
+
 const blankCharacter = {
   nome: '', imagem: '', casa: 'Sem Casa', idade: '', sexo: '', jogador: '', descricao: '',
   xp: '', arquetipo: '', nivel: '', destino: '', intriga: '0', combate: '0', armadura: 'Roupas', armas: '',
@@ -573,6 +857,8 @@ function App() {
     if (route.startsWith('/characters/')) return <CharacterForm go={go} id={route.split('/')[2]} />;
     if (route === '/campaigns') return <Campaigns go={go} />;
     if (route === '/campaigns/new') return <CampaignForm go={go} />;
+    if (/^\/campaigns\/[^/]+\/map$/.test(route)) return <CampaignBoard go={go} id={route.split('/')[2]} />;
+    if (/^\/campaigns\/[^/]+\/enemies$/.test(route)) return <CampaignEnemies go={go} id={route.split('/')[2]} />;
     if (route.startsWith('/campaigns/')) return <CampaignDetail go={go} id={route.split('/')[2]} />;
     return <Dashboard go={go} />;
   }, [route, authed]);
@@ -1340,6 +1626,658 @@ function JoinCampaign({ go, code, authed }) {
   );
 }
 
+function CampaignEnemies({ go, id }) {
+  const [campaign, setCampaign] = useState(null);
+  const [enemies, setEnemies] = useState([]);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('Todos');
+  const [form, setForm] = useState(blankEnemy);
+  const [editingId, setEditingId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  const loadEnemies = () => request(`/campaigns/${id}/enemies`).then(setEnemies);
+
+  useEffect(() => {
+    Promise.all([request(`/campaigns/${id}`), request(`/campaigns/${id}/enemies`)])
+      .then(([campaignData, enemyData]) => {
+        setCampaign(campaignData);
+        setEnemies(enemyData);
+      })
+      .catch((err) => setError(err.message));
+  }, [id]);
+
+  const filteredPresets = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+    return enemyPresets.filter((enemy) => (
+      (category === 'Todos' || enemy.category === category)
+      && (!term || `${enemy.name} ${enemy.notes}`.toLocaleLowerCase('pt-BR').includes(term))
+    ));
+  }, [search, category]);
+
+  async function addPreset(preset) {
+    setBusy(preset.name);
+    setError('');
+    try {
+      const created = await request(`/campaigns/${id}/enemies`, {
+        method: 'POST',
+        body: JSON.stringify({ ...preset, current_health: preset.health })
+      });
+      setEnemies((current) => [created, ...current]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function openCustomForm() {
+    setEditingId(null);
+    setForm({ ...blankEnemy });
+    setShowForm(true);
+  }
+
+  function editEnemy(enemy) {
+    setEditingId(enemy.id);
+    setForm({
+      name: enemy.name,
+      category: enemy.category,
+      threat: enemy.threat,
+      combat_defense: enemy.combat_defense,
+      health: enemy.health,
+      armor: enemy.armor,
+      movement: enemy.movement,
+      attack: enemy.attack,
+      damage: enemy.damage,
+      abilities: enemy.abilities,
+      notes: enemy.notes,
+      source: enemy.source
+    });
+    setShowForm(true);
+    scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function saveEnemy(event) {
+    event.preventDefault();
+    setBusy('form');
+    setError('');
+    try {
+      const saved = await request(
+        editingId ? `/campaigns/${id}/enemies/${editingId}` : `/campaigns/${id}/enemies`,
+        {
+          method: editingId ? 'PUT' : 'POST',
+          body: JSON.stringify(form)
+        }
+      );
+      setEnemies((current) => (
+        editingId
+          ? current.map((enemy) => enemy.id === saved.id ? saved : enemy)
+          : [saved, ...current]
+      ));
+      setShowForm(false);
+      setEditingId(null);
+      setForm({ ...blankEnemy });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function changeHealth(enemy, delta) {
+    const current_health = Math.min(enemy.health, Math.max(0, enemy.current_health + delta));
+    if (current_health === enemy.current_health) return;
+    setEnemies((current) => current.map((item) => item.id === enemy.id ? { ...item, current_health } : item));
+    try {
+      const saved = await request(`/campaigns/${id}/enemies/${enemy.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ current_health })
+      });
+      setEnemies((current) => current.map((item) => item.id === saved.id ? saved : item));
+    } catch (err) {
+      setError(err.message);
+      loadEnemies().catch(() => {});
+    }
+  }
+
+  async function removeEnemy(enemy) {
+    if (!confirm(`Remover ${enemy.name} da campanha?`)) return;
+    setError('');
+    try {
+      await request(`/campaigns/${id}/enemies/${enemy.id}`, { method: 'DELETE' });
+      setEnemies((current) => current.filter((item) => item.id !== enemy.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  if (!campaign && !error) return <main className="centerPage">Carregando inimigos...</main>;
+
+  return (
+    <main className="enemyPage">
+      <div className="enemyPageHeader">
+        <div>
+          <button className="backButton" onClick={() => go(`/campaigns/${id}`)}>
+            <ArrowLeft size={18} />Campanha
+          </button>
+          <p className="kicker">Bestiário da campanha</p>
+          <h1>{campaign?.name}</h1>
+        </div>
+        <div className="rowActions">
+          <button onClick={() => go(`/campaigns/${id}/map`)}><MapIcon size={18} />Mesa de jogo</button>
+          {campaign?.is_owner && (
+            <button className="primary" onClick={openCustomForm}><Plus size={18} />Inimigo personalizado</button>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="error">{error}</p>}
+
+      {showForm && campaign?.is_owner && (
+        <form className="enemyForm" onSubmit={saveEnemy}>
+          <div className="formHeader">
+            <div>
+              <p className="kicker">{editingId ? 'Editar ficha' : 'Nova ficha'}</p>
+              <h2>{editingId ? 'Editar inimigo' : 'Inimigo personalizado'}</h2>
+            </div>
+            <button type="button" onClick={() => setShowForm(false)}><X size={18} />Fechar</button>
+          </div>
+          <div className="enemyFormGrid">
+            <Field label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} />
+            <label>
+              Categoria
+              <select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>
+                {['Humanoide', 'Animal', 'Sobrenatural', 'Morto-vivo'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+            <label>
+              Ameaça
+              <select value={form.threat} onChange={(event) => setForm({ ...form, threat: event.target.value })}>
+                {['Baixa', 'Comum', 'Perigosa', 'Mortal', 'Lendária'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+            <Field label="Defesa em Combate" type="number" value={form.combat_defense} onChange={(combat_defense) => setForm({ ...form, combat_defense })} />
+            <Field label="Saúde" type="number" value={form.health} onChange={(health) => setForm({ ...form, health })} />
+            <Field label="Armadura" type="number" value={form.armor} onChange={(armor) => setForm({ ...form, armor })} />
+            <Field label="Movimento" type="number" value={form.movement} onChange={(movement) => setForm({ ...form, movement })} />
+            <Field label="Ataque" value={form.attack} onChange={(attack) => setForm({ ...form, attack })} />
+            <Field label="Dano" value={form.damage} onChange={(damage) => setForm({ ...form, damage })} />
+          </div>
+          <div className="enemyTextFields">
+            <TextField label="Habilidades especiais" value={form.abilities} onChange={(abilities) => setForm({ ...form, abilities })} />
+            <TextField label="Notas" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+          </div>
+          <button className="primary" type="submit" disabled={busy === 'form'}>
+            <Save size={18} />{busy === 'form' ? 'Salvando...' : 'Salvar inimigo'}
+          </button>
+        </form>
+      )}
+
+      <div className="enemyLayout">
+        <section className="enemyLibrary">
+          <div className="sectionHeading">
+            <div>
+              <h2>Inimigos pré-prontos</h2>
+              <p>Fichas resumidas dos livros para inclusão rápida.</p>
+            </div>
+            <span>{filteredPresets.length} opções</span>
+          </div>
+          <div className="enemyFilters">
+            <label className="searchField">
+              <Search size={18} />
+              <input placeholder="Buscar inimigo" value={search} onChange={(event) => setSearch(event.target.value)} />
+            </label>
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              {['Todos', 'Humanoide', 'Animal', 'Sobrenatural', 'Morto-vivo'].map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </div>
+          <div className="presetGrid">
+            {filteredPresets.map((enemy) => (
+              <article className="presetCard" key={enemy.name}>
+                <div className="enemyCardTitle">
+                  <span className={`enemyIcon ${enemy.category.toLocaleLowerCase('pt-BR').replace('-', '')}`}><Skull size={20} /></span>
+                  <div>
+                    <h3>{enemy.name}</h3>
+                    <span>{enemy.category} · {enemy.threat}</span>
+                  </div>
+                </div>
+                <div className="enemyStats">
+                  <span><b>{enemy.combat_defense}</b>Defesa</span>
+                  <span><b>{enemy.health}</b>Saúde</span>
+                  <span><b>{enemy.armor}</b>Armadura</span>
+                  <span><b>{enemy.movement}</b>Mov.</span>
+                </div>
+                <p><strong>{enemy.attack}</strong> · dano {enemy.damage}</p>
+                <small>{enemy.source}</small>
+                {campaign?.is_owner && (
+                  <button className="primary" disabled={busy === enemy.name} onClick={() => addPreset(enemy)}>
+                    <Plus size={17} />{busy === enemy.name ? 'Incluindo...' : 'Incluir na campanha'}
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <aside className="campaignEnemyList">
+          <div className="sectionHeading">
+            <div>
+              <h2>Na campanha</h2>
+              <p>{enemies.length} inimigos ativos</p>
+            </div>
+          </div>
+          <div className="activeEnemies">
+            {enemies.map((enemy) => {
+              const healthPercent = Math.round((enemy.current_health / enemy.health) * 100);
+              return (
+                <article className="activeEnemyCard" key={enemy.id}>
+                  <div className="enemyCardTitle">
+                    <span className="enemyIcon hostile"><Skull size={20} /></span>
+                    <div>
+                      <h3>{enemy.name}</h3>
+                      <span>{enemy.category} · {enemy.threat}</span>
+                    </div>
+                  </div>
+                  <div className="enemyHealth">
+                    <div><Heart size={15} /><span>Saúde</span><strong>{enemy.current_health}/{enemy.health}</strong></div>
+                    <div className="healthTrack"><i style={{ width: `${healthPercent}%` }} /></div>
+                    {campaign?.is_owner && (
+                      <div className="healthControls">
+                        <button onClick={() => changeHealth(enemy, -1)}><Minus size={15} /></button>
+                        <button onClick={() => changeHealth(enemy, 1)}><Plus size={15} /></button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="activeEnemyStats">
+                    <span>Defesa <b>{enemy.combat_defense}</b></span>
+                    <span>VA <b>{enemy.armor}</b></span>
+                    <span>Mov. <b>{enemy.movement}</b></span>
+                  </div>
+                  <p><strong>{enemy.attack}</strong> · dano {enemy.damage}</p>
+                  {enemy.abilities && <small>{enemy.abilities}</small>}
+                  {campaign?.is_owner && (
+                    <div className="rowActions">
+                      <button onClick={() => editEnemy(enemy)}><Pencil size={16} />Editar</button>
+                      <button className="danger" onClick={() => removeEnemy(enemy)}><Trash2 size={16} />Remover</button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+            {!enemies.length && (
+              <div className="emptyEnemies">
+                <Skull size={36} />
+                <p>Nenhum inimigo incluído.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+function prepareMapImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Escolha uma imagem válida.'));
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      reject(new Error('A imagem deve ter no máximo 15 MB.'));
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 1920 / image.width, 1080 / image.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objectUrl);
+      const dataUrl = canvas.toDataURL('image/webp', 0.84);
+      if (dataUrl.length > 4_400_000) {
+        reject(new Error('O mapa ficou muito grande. Use uma imagem menor.'));
+        return;
+      }
+      resolve(dataUrl);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Não foi possível abrir essa imagem.'));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function CampaignBoard({ go, id }) {
+  const boardRef = useRef(null);
+  const draggingRef = useRef(null);
+  const [campaign, setCampaign] = useState(null);
+  const [enemies, setEnemies] = useState([]);
+  const [mapImage, setMapImage] = useState('');
+  const [positions, setPositions] = useState({});
+  const [rolls, setRolls] = useState([]);
+  const [sides, setSides] = useState(20);
+  const [quantity, setQuantity] = useState(1);
+  const [rolling, setRolling] = useState(false);
+  const [rollFace, setRollFace] = useState(20);
+  const [lastRoll, setLastRoll] = useState(null);
+  const [savingMap, setSavingMap] = useState(false);
+  const [error, setError] = useState('');
+
+  function applyBoard(data, includePositions = true) {
+    setMapImage(data.map_image || '');
+    setRolls(data.rolls || []);
+    if (includePositions) {
+      setPositions(data.token_positions || {});
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      request(`/campaigns/${id}`),
+      request(`/campaigns/${id}/board`),
+      request(`/campaigns/${id}/enemies`)
+    ])
+      .then(([campaignData, boardData, enemyData]) => {
+        if (!active) return;
+        setCampaign(campaignData);
+        setEnemies(enemyData);
+        applyBoard(boardData);
+      })
+      .catch((err) => active && setError(err.message));
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Promise.all([request(`/campaigns/${id}/board`), request(`/campaigns/${id}/enemies`)])
+        .then(([boardData, enemyData]) => {
+          applyBoard(boardData, !draggingRef.current);
+          setEnemies(enemyData);
+        })
+        .catch(() => {});
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [id]);
+
+  function defaultPosition(index) {
+    return {
+      x: 12 + (index % 6) * 15,
+      y: 18 + Math.floor(index / 6) * 20
+    };
+  }
+
+  function canMove(character) {
+    return campaign?.is_owner || character.user_id === campaign?.current_user_id;
+  }
+
+  function positionFromPointer(event) {
+    const rect = boardRef.current.getBoundingClientRect();
+    return {
+      x: Math.min(96, Math.max(4, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.min(94, Math.max(6, ((event.clientY - rect.top) / rect.height) * 100))
+    };
+  }
+
+  function startTokenDrag(event, tokenId, movable) {
+    if (!movable) return;
+    event.preventDefault();
+    draggingRef.current = { id: String(tokenId), pointerId: event.pointerId };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveToken(event, tokenId) {
+    const drag = draggingRef.current;
+    if (!drag || drag.id !== String(tokenId) || drag.pointerId !== event.pointerId) return;
+    const position = positionFromPointer(event);
+    setPositions((current) => ({ ...current, [tokenId]: position }));
+  }
+
+  async function endTokenDrag(event, tokenId) {
+    const drag = draggingRef.current;
+    if (!drag || drag.id !== String(tokenId) || drag.pointerId !== event.pointerId) return;
+    const position = positionFromPointer(event);
+    draggingRef.current = null;
+    setPositions((current) => ({ ...current, [tokenId]: position }));
+    try {
+      const saved = await request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ token_positions: { [tokenId]: position } })
+      });
+      setPositions(saved.token_positions || {});
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function uploadMap(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setError('');
+    setSavingMap(true);
+    try {
+      const preparedImage = await prepareMapImage(file);
+      const saved = await request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ map_image: preparedImage })
+      });
+      setMapImage(saved.map_image || '');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingMap(false);
+    }
+  }
+
+  async function removeMap() {
+    if (!confirm('Remover o mapa atual?')) return;
+    setError('');
+    try {
+      await request(`/campaigns/${id}/board`, {
+        method: 'PUT',
+        body: JSON.stringify({ map_image: '' })
+      });
+      setMapImage('');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function rollDice() {
+    if (rolling) return;
+    setError('');
+    setRolling(true);
+    const ticker = setInterval(() => setRollFace(Math.floor(Math.random() * sides) + 1), 65);
+    try {
+      const [result] = await Promise.all([
+        request(`/campaigns/${id}/rolls`, {
+          method: 'POST',
+          body: JSON.stringify({ sides, quantity })
+        }),
+        new Promise((resolve) => setTimeout(resolve, 750))
+      ]);
+      setRollFace(result.total);
+      setLastRoll(result);
+      setRolls((current) => [result, ...current.filter((roll) => roll.id !== result.id)].slice(0, 30));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      clearInterval(ticker);
+      setRolling(false);
+    }
+  }
+
+  if (!campaign && !error) return <main className="centerPage">Preparando a mesa...</main>;
+
+  return (
+    <main className="battlePage">
+      <div className="battleHeader">
+        <div>
+          <button className="backButton" onClick={() => go(`/campaigns/${id}`)}>
+            <ArrowLeft size={18} />Campanha
+          </button>
+          <p className="kicker">Mesa de jogo</p>
+          <h1>{campaign?.name || 'Mapa da campanha'}</h1>
+        </div>
+        {campaign?.is_owner && (
+          <div className="mapActions">
+            <button onClick={() => go(`/campaigns/${id}/enemies`)}><Skull size={18} />Inimigos</button>
+            <label className="uploadButton">
+              <Upload size={18} />
+              {savingMap ? 'Enviando...' : 'Subir mapa'}
+              <input type="file" accept="image/*" disabled={savingMap} onChange={uploadMap} />
+            </label>
+            {mapImage && <button onClick={removeMap}><X size={18} />Remover mapa</button>}
+          </div>
+        )}
+      </div>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="battleLayout">
+        <section className="mapPanel">
+          <div
+            ref={boardRef}
+            className={`battleMap${mapImage ? ' hasMap' : ''}`}
+            style={mapImage ? { backgroundImage: `linear-gradient(rgba(18, 11, 8, .08), rgba(18, 11, 8, .2)), url("${mapImage}")` } : undefined}
+          >
+            {!mapImage && (
+              <div className="emptyMap">
+                <MapIcon size={52} />
+                <strong>Suba um mapa para começar</strong>
+                <span>Os marcadores já podem ser movimentados livremente.</span>
+              </div>
+            )}
+            {campaign?.characters.map((character, index) => {
+              const tokenId = String(character.id);
+              const position = positions[tokenId] || defaultPosition(index);
+              const movable = canMove(character);
+              return (
+                <button
+                  type="button"
+                  key={character.id}
+                  className={`characterToken${movable ? ' movable' : ''}`}
+                  style={{ left: `${position.x}%`, top: `${position.y}%` }}
+                  title={`${character.name}${movable ? ' — arraste para mover' : ''}`}
+                  onPointerDown={(event) => startTokenDrag(event, tokenId, movable)}
+                  onPointerMove={(event) => moveToken(event, tokenId)}
+                  onPointerUp={(event) => endTokenDrag(event, tokenId)}
+                  onPointerCancel={(event) => endTokenDrag(event, tokenId)}
+                >
+                  <span className="tokenPortrait">
+                    {character.data?.imagem
+                      ? <img src={character.data.imagem} alt="" draggable="false" />
+                      : <span>{character.name.slice(0, 2).toUpperCase()}</span>}
+                  </span>
+                  <span className="tokenName">{character.name}</span>
+                </button>
+              );
+            })}
+            {enemies.map((enemy, index) => {
+              const tokenId = `enemy:${enemy.id}`;
+              const position = positions[tokenId] || defaultPosition((campaign?.characters.length || 0) + index);
+              return (
+                <button
+                  type="button"
+                  key={tokenId}
+                  className={`characterToken enemyToken${campaign?.is_owner ? ' movable' : ''}`}
+                  style={{ left: `${position.x}%`, top: `${position.y}%` }}
+                  title={`${enemy.name} — ${enemy.current_health}/${enemy.health} de Saúde`}
+                  onPointerDown={(event) => startTokenDrag(event, tokenId, campaign?.is_owner)}
+                  onPointerMove={(event) => moveToken(event, tokenId)}
+                  onPointerUp={(event) => endTokenDrag(event, tokenId)}
+                  onPointerCancel={(event) => endTokenDrag(event, tokenId)}
+                >
+                  <span className="tokenPortrait"><Skull size={27} /></span>
+                  <span className="tokenName">{enemy.name}</span>
+                  <span className="tokenHealth">{enemy.current_health}/{enemy.health}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="tokenLegend">
+            <span><i className="legendDot yours" />Movimentável</span>
+            <span><i className="legendDot others" />Somente visualização</span>
+            <span><i className="legendDot enemy" />Inimigo</span>
+            <small>Arraste livremente para qualquer ponto do mapa.</small>
+          </div>
+        </section>
+
+        <aside className="dicePanel">
+          <div className="diceTitle">
+            <Dices size={25} />
+            <div>
+              <h2>Dados</h2>
+              <span>Escolha e role</span>
+            </div>
+          </div>
+
+          <div className="diceTypes">
+            {[4, 6, 8, 10, 12, 20, 100].map((die) => (
+              <button
+                type="button"
+                key={die}
+                className={sides === die ? 'active' : ''}
+                onClick={() => {
+                  setSides(die);
+                  setRollFace(die);
+                }}
+              >
+                d{die}
+              </button>
+            ))}
+          </div>
+
+          <div className="diceQuantity">
+            <span>Quantidade</span>
+            <div>
+              <button onClick={() => setQuantity((value) => Math.max(1, value - 1))}><Minus size={16} /></button>
+              <strong>{quantity}</strong>
+              <button onClick={() => setQuantity((value) => Math.min(20, value + 1))}><Plus size={16} /></button>
+            </div>
+          </div>
+
+          <div className={`rollingDie${rolling ? ' rolling' : ''}`}>
+            <span>{rollFace}</span>
+          </div>
+          {lastRoll && !rolling && (
+            <p className="lastRoll">
+              <strong>{lastRoll.total}</strong>
+              <span>{lastRoll.notation}: {lastRoll.results.join(' + ')}</span>
+            </p>
+          )}
+          <button className="primary rollButton" disabled={rolling} onClick={rollDice}>
+            <Dices size={20} />{rolling ? 'Rolando...' : `Rolar ${quantity}d${sides}`}
+          </button>
+
+          <div className="rollHistory">
+            <h3>Histórico da mesa</h3>
+            {rolls.map((roll) => (
+              <div className="rollEntry" key={roll.id}>
+                <div>
+                  <strong>{roll.username}</strong>
+                  <span>{roll.notation} · {roll.results.join(', ')}</span>
+                </div>
+                <b>{roll.total}</b>
+              </div>
+            ))}
+            {!rolls.length && <small>Nenhuma rolagem ainda.</small>}
+          </div>
+        </aside>
+      </div>
+    </main>
+  );
+}
+
 function CampaignDetail({ go, id }) {
   const [campaign, setCampaign] = useState(null);
   const [characters, setCharacters] = useState([]);
@@ -1432,6 +2370,12 @@ function CampaignDetail({ go, id }) {
               <small>Mestre: {campaign.owner_username}</small>
             </div>
             <div className="rowActions">
+              <button className="primary" onClick={() => go(`/campaigns/${id}/map`)}>
+                <MapIcon size={18} />Mesa de jogo
+              </button>
+              <button onClick={() => go(`/campaigns/${id}/enemies`)}>
+                <Skull size={18} />Inimigos
+              </button>
               <button onClick={copyInvite}><Copy size={18} />Copiar link</button>
               {campaign.is_owner && (
                 <button className="danger" onClick={removeCampaign}><Trash2 size={18} />Excluir</button>
