@@ -796,6 +796,7 @@ def init_db() -> None:
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
+                auth_version INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             )
             """
@@ -807,6 +808,10 @@ def init_db() -> None:
         if "role" not in user_columns:
             conn.execute(
                 "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
+            )
+        if "auth_version" not in user_columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"
             )
         conn.execute(
             """
@@ -978,6 +983,18 @@ def init_db() -> None:
         )
 
 
+def delete_campaign_records(conn: sqlite3.Connection, campaign_id: int | str) -> None:
+    conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_boards WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_enemies WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_map_versions WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_maps WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?", (campaign_id,))
+    conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(32)
     iterations = 310_000
@@ -1014,7 +1031,20 @@ def sign(payload: bytes) -> str:
 
 
 def create_token(user_id: int) -> str:
-    payload = json.dumps({"sub": user_id, "exp": int(time.time()) + TOKEN_TTL}, separators=(",", ":")).encode()
+    with db() as conn:
+        user = conn.execute(
+            "SELECT auth_version FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    auth_version = int(user["auth_version"]) if user else 0
+    payload = json.dumps(
+        {
+            "sub": user_id,
+            "ver": auth_version,
+            "exp": int(time.time()) + TOKEN_TTL,
+        },
+        separators=(",", ":"),
+    ).encode()
     payload_text = b64url(payload)
     return f"{payload_text}.{sign(payload_text.encode())}"
 
@@ -1028,7 +1058,15 @@ def parse_token(token: str) -> int | None:
         payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
         if payload["exp"] < int(time.time()):
             return None
-        return int(payload["sub"])
+        user_id = int(payload["sub"])
+        with db() as conn:
+            user = conn.execute(
+                "SELECT auth_version FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if not user or int(payload.get("ver", 0)) != int(user["auth_version"]):
+            return None
+        return user_id
     except Exception:
         return None
 
@@ -1250,6 +1288,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         init_db()
         path = urlparse(self.path).path
+        if path == "/admin/users":
+            return self.admin_list_users()
         if path == "/character-images":
             return self.list_character_images()
         if path.startswith("/character-images/"):
@@ -1305,6 +1345,8 @@ class Handler(BaseHTTPRequestHandler):
         init_db()
         path = urlparse(self.path).path
         try:
+            if path.startswith("/admin/users/") and path.endswith("/password"):
+                return self.admin_update_user_password(path)
             if path.startswith("/characters/"):
                 return self.update_character(path)
             if path.startswith("/campaigns/") and path.endswith("/diary"):
@@ -1326,6 +1368,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         init_db()
         path = urlparse(self.path).path
+        if path.startswith("/admin/users/"):
+            return self.admin_delete_user(path)
         if path.startswith("/characters/"):
             return self.delete_character(path)
         if path.startswith("/campaigns/") and "/characters/" in path:
@@ -1388,6 +1432,172 @@ class Handler(BaseHTTPRequestHandler):
                 "role": user["role"],
                 "created_at": user["created_at"],
                 "characters_count": total["total"],
+            },
+        )
+
+    def admin_list_users(self) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        with db() as conn:
+            if not self.is_superadmin(conn, user_id):
+                return self.send_json(403, {"detail": "Acesso exclusivo do superadmin"})
+            users = conn.execute(
+                """
+                SELECT
+                    u.id,
+                    u.username,
+                    u.role,
+                    u.created_at,
+                    (SELECT COUNT(*) FROM characters ch WHERE ch.user_id = u.id) AS characters_count,
+                    (SELECT COUNT(*) FROM campaigns c WHERE c.owner_id = u.id) AS campaigns_count,
+                    (SELECT COUNT(*) FROM campaign_members cm WHERE cm.user_id = u.id) AS memberships_count
+                FROM users u
+                ORDER BY
+                    CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END,
+                    lower(u.username)
+                """
+            ).fetchall()
+        self.send_json(
+            200,
+            {
+                "current_user_id": user_id,
+                "users": [dict(user) for user in users],
+            },
+        )
+
+    def admin_update_user_password(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        try:
+            target_id = int(path.strip("/").split("/")[2])
+        except (IndexError, TypeError, ValueError):
+            return self.send_json(400, {"detail": "Usuário inválido"})
+        password = str(self.read_json().get("password", ""))
+        if not 8 <= len(password) <= 128:
+            return self.send_json(400, {"detail": "A senha deve ter entre 8 e 128 caracteres"})
+        with db() as conn:
+            if not self.is_superadmin(conn, user_id):
+                return self.send_json(403, {"detail": "Acesso exclusivo do superadmin"})
+            target = conn.execute(
+                "SELECT id, username FROM users WHERE id = ?",
+                (target_id,),
+            ).fetchone()
+            if not target:
+                return self.send_json(404, {"detail": "Usuário não encontrado"})
+            conn.execute(
+                """
+                UPDATE users
+                SET password_hash = ?, auth_version = auth_version + 1
+                WHERE id = ?
+                """,
+                (hash_password(password), target_id),
+            )
+        self.send_json(
+            200,
+            {
+                "id": target_id,
+                "username": target["username"],
+                "password_updated": True,
+                "sessions_revoked": True,
+            },
+        )
+
+    def admin_delete_user(self, path: str) -> None:
+        user_id = self.user_id()
+        if not user_id:
+            return self.send_json(401, {"detail": "Login necessário"})
+        try:
+            target_id = int(path.strip("/").split("/")[2])
+        except (IndexError, TypeError, ValueError):
+            return self.send_json(400, {"detail": "Usuário inválido"})
+        with db() as conn:
+            if not self.is_superadmin(conn, user_id):
+                return self.send_json(403, {"detail": "Acesso exclusivo do superadmin"})
+            target = conn.execute(
+                "SELECT id, username, role FROM users WHERE id = ?",
+                (target_id,),
+            ).fetchone()
+            if not target:
+                return self.send_json(404, {"detail": "Usuário não encontrado"})
+            if target_id == user_id or target["role"] == "superadmin":
+                return self.send_json(400, {"detail": "O superadmin principal não pode ser excluído"})
+
+            owned_campaigns = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM campaigns WHERE owner_id = ?",
+                    (target_id,),
+                ).fetchall()
+            ]
+            for campaign_id in owned_campaigns:
+                delete_campaign_records(conn, campaign_id)
+
+            conn.execute(
+                """
+                UPDATE campaign_boards
+                SET updated_by = (
+                    SELECT owner_id FROM campaigns
+                    WHERE campaigns.id = campaign_boards.campaign_id
+                )
+                WHERE updated_by = ?
+                """,
+                (target_id,),
+            )
+            conn.execute(
+                """
+                UPDATE campaign_enemies
+                SET created_by = (
+                    SELECT owner_id FROM campaigns
+                    WHERE campaigns.id = campaign_enemies.campaign_id
+                )
+                WHERE created_by = ?
+                """,
+                (target_id,),
+            )
+            conn.execute(
+                """
+                UPDATE campaign_maps
+                SET created_by = (
+                    SELECT owner_id FROM campaigns
+                    WHERE campaigns.id = campaign_maps.campaign_id
+                )
+                WHERE created_by = ?
+                """,
+                (target_id,),
+            )
+            conn.execute(
+                """
+                UPDATE campaign_characters
+                SET added_by = (
+                    SELECT owner_id FROM campaigns
+                    WHERE campaigns.id = campaign_characters.campaign_id
+                )
+                WHERE added_by = ?
+                """,
+                (target_id,),
+            )
+            conn.execute(
+                """
+                DELETE FROM campaign_characters
+                WHERE character_id IN (
+                    SELECT id FROM characters WHERE user_id = ?
+                )
+                """,
+                (target_id,),
+            )
+            conn.execute("DELETE FROM campaign_rolls WHERE user_id = ?", (target_id,))
+            conn.execute("DELETE FROM campaign_members WHERE user_id = ?", (target_id,))
+            conn.execute("DELETE FROM characters WHERE user_id = ?", (target_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (target_id,))
+        self.send_json(
+            200,
+            {
+                "id": target_id,
+                "username": target["username"],
+                "deleted": True,
+                "deleted_campaigns": len(owned_campaigns),
             },
         )
 
@@ -2535,15 +2745,7 @@ class Handler(BaseHTTPRequestHandler):
             campaign = self.campaign_manage_access(conn, campaign_id, user_id)
             if not campaign:
                 return self.send_json(404, {"detail": "Campanha não encontrada"})
-            conn.execute("DELETE FROM campaign_rolls WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_boards WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_enemies WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_map_versions WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_maps WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_diaries WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_characters WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?", (campaign_id,))
-            conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+            delete_campaign_records(conn, campaign_id)
         self.send_json(200, {"deleted": True})
 
     def get_campaign_invite(self, path: str) -> None:

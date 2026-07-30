@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, BookOpen, CircleDashed, CloudRain, Copy, Crosshair, Dices, DoorClosed, DoorOpen, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, History, Image as ImageIcon, Layers3, Lightbulb, LogOut, Map as MapIcon, Minus, MousePointer2, Pause, Pencil, Play, Plus, Redo2, RotateCw, Ruler, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, TriangleAlert, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, CircleDashed, CloudRain, Copy, Crosshair, Crown, Dices, DoorClosed, DoorOpen, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, History, Image as ImageIcon, KeyRound, Layers3, Lightbulb, LogOut, Map as MapIcon, Minus, MousePointer2, Pause, Pencil, Play, Plus, Redo2, RotateCw, Ruler, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, TriangleAlert, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -1016,12 +1016,27 @@ function request(path, options = {}) {
 function App() {
   const [route, setRoute] = useState(location.hash.slice(1) || '/');
   const [token, setToken] = useState(localStorage.getItem('gotrpg_token'));
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
     const onHash = () => setRoute(location.hash.slice(1) || '/');
     addEventListener('hashchange', onHash);
     return () => removeEventListener('hashchange', onHash);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!token) {
+      setCurrentUser(null);
+      return undefined;
+    }
+    request('/me')
+      .then((profile) => active && setCurrentUser(profile))
+      .catch(() => active && setCurrentUser(null));
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   const go = (path) => {
     location.hash = path;
@@ -1031,6 +1046,7 @@ function App() {
   const logout = () => {
     localStorage.removeItem('gotrpg_token');
     setToken(null);
+    setCurrentUser(null);
     go('/');
   };
 
@@ -1042,6 +1058,7 @@ function App() {
     if (!authed) return <Auth go={go} setToken={setToken} />;
     if (route === '/dashboard') return <Dashboard go={go} />;
     if (route === '/profile') return <Profile />;
+    if (route === '/admin') return <AdminPanel go={go} />;
     if (route === '/new') return <CharacterForm go={go} />;
     if (route === '/characters') return <Characters go={go} />;
     if (route.startsWith('/characters/')) return <CharacterForm go={go} id={route.split('/')[2]} />;
@@ -1063,6 +1080,7 @@ function App() {
         </button>
         <nav>
           {authed && <button onClick={() => go('/profile')}><User size={17} />Perfil</button>}
+          {currentUser?.role === 'superadmin' && <button onClick={() => go('/admin')}><Crown size={17} />Admin</button>}
           {authed && <button onClick={() => go('/dashboard')}>Dashboard</button>}
           {authed && <button onClick={() => go('/campaigns')}><Swords size={17} />Campanhas</button>}
           {authed && <button onClick={logout}><LogOut size={17} />Sair</button>}
@@ -1173,6 +1191,186 @@ function Profile() {
             <div><span>Personagens</span><strong>{profile.characters_count}</strong></div>
           </div>
         )}
+      </section>
+    </main>
+  );
+}
+
+function AdminPanel({ go }) {
+  const [adminData, setAdminData] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [passwords, setPasswords] = useState({});
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  function loadAdmin() {
+    setError('');
+    return Promise.all([request('/admin/users'), request('/campaigns')])
+      .then(([usersData, campaignData]) => {
+        setAdminData(usersData);
+        setCampaigns(campaignData);
+      })
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    loadAdmin();
+  }, []);
+
+  async function updatePassword(user) {
+    const password = passwords[user.id] || '';
+    if (password.length < 8) return;
+    setBusy(`password:${user.id}`);
+    setError('');
+    setMessage('');
+    try {
+      await request(`/admin/users/${user.id}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password })
+      });
+      if (user.id === adminData.current_user_id) {
+        localStorage.removeItem('gotrpg_token');
+        location.hash = '/auth';
+        location.reload();
+        return;
+      }
+      setPasswords((current) => ({ ...current, [user.id]: '' }));
+      setMessage(`Senha de ${user.username} alterada e sessões encerradas.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function deleteUser(user) {
+    const details = user.campaigns_count
+      ? ` A conta possui ${user.campaigns_count} campanha(s), que também serão excluídas.`
+      : '';
+    if (!confirm(`Excluir permanentemente o usuário ${user.username}?${details}`)) return;
+    setBusy(`delete:${user.id}`);
+    setError('');
+    setMessage('');
+    try {
+      await request(`/admin/users/${user.id}`, { method: 'DELETE' });
+      setMessage(`Usuário ${user.username} excluído.`);
+      await loadAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  if (!adminData && !error) {
+    return <main className="centerPage">Carregando administração...</main>;
+  }
+
+  return (
+    <main className="adminPage">
+      <div className="adminHeader">
+        <div>
+          <p className="kicker">Controle total</p>
+          <h1><Crown size={29} />Superadmin</h1>
+          <p>Usuários, acessos e campanhas da plataforma.</p>
+        </div>
+        <button onClick={() => go('/dashboard')}><ArrowLeft size={18} />Dashboard</button>
+      </div>
+
+      {error && <p className="error">{error}</p>}
+      {message && <p className="successMessage">{message}</p>}
+
+      {adminData && (
+        <section className="adminSection">
+          <div className="adminSectionTitle">
+            <div>
+              <h2><Users size={21} />Usuários</h2>
+              <span>{adminData.users.length} contas cadastradas</span>
+            </div>
+          </div>
+          <div className="adminUserList">
+            {adminData.users.map((user) => {
+              const self = user.id === adminData.current_user_id;
+              const protectedUser = user.role === 'superadmin';
+              return (
+                <article className="adminUserCard" key={user.id}>
+                  <div className="adminUserIdentity">
+                    <span className={protectedUser ? 'adminAvatar superadmin' : 'adminAvatar'}>
+                      {protectedUser ? <Crown size={20} /> : <User size={20} />}
+                    </span>
+                    <div>
+                      <strong>{user.username}</strong>
+                      <small>{protectedUser ? 'Superadmin' : 'Usuário'}{self ? ' · sua conta' : ''}</small>
+                    </div>
+                  </div>
+                  <div className="adminUserStats">
+                    <span><b>{user.campaigns_count}</b>Campanhas</span>
+                    <span><b>{user.characters_count}</b>Fichas</span>
+                    <span><b>{user.memberships_count}</b>Participações</span>
+                  </div>
+                  <div className="adminPassword">
+                    <KeyRound size={17} />
+                    <input
+                      type="password"
+                      minLength="8"
+                      maxLength="128"
+                      placeholder="Nova senha (mínimo 8)"
+                      value={passwords[user.id] || ''}
+                      onChange={(event) => setPasswords((current) => ({
+                        ...current,
+                        [user.id]: event.target.value
+                      }))}
+                    />
+                    <button
+                      onClick={() => updatePassword(user)}
+                      disabled={(passwords[user.id] || '').length < 8 || Boolean(busy)}
+                    >
+                      {busy === `password:${user.id}` ? 'Alterando...' : 'Alterar senha'}
+                    </button>
+                  </div>
+                  {!protectedUser && (
+                    <button
+                      className="danger adminDeleteUser"
+                      onClick={() => deleteUser(user)}
+                      disabled={Boolean(busy)}
+                    >
+                      <Trash2 size={17} />
+                      {busy === `delete:${user.id}` ? 'Excluindo...' : 'Excluir usuário'}
+                    </button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="adminSection">
+        <div className="adminSectionTitle">
+          <div>
+            <h2><Swords size={21} />Todas as campanhas</h2>
+            <span>{campaigns.length} campanhas cadastradas</span>
+          </div>
+        </div>
+        <div className="adminCampaignList">
+          {campaigns.map((campaign) => (
+            <article key={campaign.id}>
+              <div>
+                <strong>{campaign.name}</strong>
+                <span>Mestre: {campaign.owner_username}</span>
+              </div>
+              <div className="adminCampaignStats">
+                <span>{campaign.members_count} membros</span>
+                <span>{campaign.characters_count} fichas</span>
+              </div>
+              <button onClick={() => go(`/campaigns/${campaign.id}`)}>
+                <Eye size={17} />Abrir e administrar
+              </button>
+            </article>
+          ))}
+          {!campaigns.length && <p>Nenhuma campanha cadastrada.</p>}
+        </div>
       </section>
     </main>
   );

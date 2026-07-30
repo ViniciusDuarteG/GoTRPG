@@ -1604,6 +1604,214 @@ textarea {
   gap: 11px;
 }
 
+.adminPage {
+  width: min(1220px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 42px 0 72px;
+}
+
+.adminHeader,
+.adminSectionTitle,
+.adminUserIdentity,
+.adminPassword,
+.adminCampaignList article,
+.adminCampaignStats {
+  display: flex;
+  align-items: center;
+}
+
+.adminHeader {
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.adminHeader h1 {
+  margin: 5px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adminHeader p,
+.adminSectionTitle h2,
+.adminSectionTitle span {
+  margin: 0;
+}
+
+.adminSection {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid rgba(164, 112, 57, .55);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(48, 31, 20, .94), rgba(24, 17, 13, .97));
+  box-shadow: 0 18px 55px rgba(0, 0, 0, .3);
+}
+
+.adminSectionTitle {
+  justify-content: space-between;
+  margin-bottom: 17px;
+}
+
+.adminSectionTitle h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 20px;
+}
+
+.adminSectionTitle span {
+  color: #a9936d;
+  font-size: 12px;
+}
+
+.adminUserList {
+  display: grid;
+  gap: 11px;
+}
+
+.adminUserCard {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(230px, 1.1fr) minmax(390px, 2fr) auto;
+  align-items: center;
+  gap: 15px;
+  padding: 14px;
+  border: 1px solid rgba(137, 91, 49, .45);
+  border-radius: 8px;
+  background: rgba(20, 13, 10, .66);
+}
+
+.adminUserIdentity {
+  min-width: 0;
+  gap: 11px;
+}
+
+.adminUserIdentity > div {
+  min-width: 0;
+}
+
+.adminUserIdentity strong,
+.adminUserIdentity small {
+  display: block;
+}
+
+.adminUserIdentity strong {
+  overflow: hidden;
+  color: #f1d6a4;
+  text-overflow: ellipsis;
+}
+
+.adminUserIdentity small {
+  margin-top: 3px;
+  color: #9f8a68;
+}
+
+.adminAvatar {
+  flex: 0 0 auto;
+  width: 39px;
+  height: 39px;
+  border: 1px solid #6f5637;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #2a2118;
+  color: #c6aa76;
+}
+
+.adminAvatar.superadmin {
+  border-color: #c59643;
+  background: #4b3310;
+  color: #ffd36e;
+  box-shadow: 0 0 16px rgba(222, 164, 59, .2);
+}
+
+.adminUserStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.adminUserStats span {
+  padding: 7px 4px;
+  border: 1px solid rgba(123, 84, 46, .36);
+  border-radius: 5px;
+  color: #988363;
+  font-size: 9px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.adminUserStats b {
+  display: block;
+  color: #ead0a0;
+  font-size: 15px;
+}
+
+.adminPassword {
+  gap: 8px;
+}
+
+.adminPassword svg {
+  flex: 0 0 auto;
+  color: #b7955b;
+}
+
+.adminPassword input {
+  min-width: 175px;
+}
+
+.adminPassword button,
+.adminDeleteUser {
+  white-space: nowrap;
+}
+
+.adminCampaignList {
+  display: grid;
+  gap: 9px;
+}
+
+.adminCampaignList article {
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(137, 91, 49, .42);
+  border-radius: 7px;
+  background: rgba(20, 13, 10, .62);
+}
+
+.adminCampaignList article > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.adminCampaignList strong,
+.adminCampaignList article > div:first-child span {
+  display: block;
+}
+
+.adminCampaignList strong {
+  color: #f0d5a2;
+}
+
+.adminCampaignList article > div:first-child span,
+.adminCampaignStats {
+  color: #a48d69;
+  font-size: 11px;
+}
+
+.adminCampaignStats {
+  gap: 12px;
+}
+
+.successMessage {
+  padding: 11px 14px;
+  border: 1px solid rgba(75, 143, 93, .7);
+  border-radius: 6px;
+  background: rgba(24, 74, 38, .35);
+  color: #b8e7bd;
+}
+
 .enemyHealth {
   position: relative;
 }
