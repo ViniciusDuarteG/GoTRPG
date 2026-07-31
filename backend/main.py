@@ -41,6 +41,9 @@ MAP_OBJECTS = {
     "stone_wall_h", "stone_wall_v", "stone_wall_corner", "stone_wall_t",
     "masonry_wall_h", "masonry_wall_v", "masonry_wall_corner", "masonry_wall_t",
     "stone_arch", "wood_gate", "stone_pillar", "wood_fence",
+    "counter", "corner_counter", "bench", "stool", "throne", "iron_throne",
+    "simple_bed", "canopy_bed", "small_rug", "runner_rug", "round_rug",
+    "chair", "bookshelf", "cupboard", "weapon_rack", "fireplace",
 }
 ARMOR_STATS = {
     "Roupas": {"defense": 0, "movement": 0},

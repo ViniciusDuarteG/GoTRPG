@@ -1021,6 +1021,26 @@ textarea {
   background: #28160f;
 }
 
+.mapPaletteCategory {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 4px 7px;
+  border-left: 1px solid #704727;
+  color: #d7aa62;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.mapPaletteCategory:first-child {
+  border-left: 0;
+}
+
 .mapPalette button {
   flex: 0 0 62px;
   min-height: 62px;
@@ -1093,6 +1113,17 @@ textarea {
   min-width: 27px;
 }
 
+.objectTransformBar .rotateWallButton {
+  width: auto;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: #f0c875;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
 .mapCanvasViewport {
   min-height: 560px;
   max-height: calc(100vh - 292px);
@@ -1122,7 +1153,7 @@ textarea {
   padding: 0;
   border: 0;
   border-radius: 0;
-  overflow: hidden;
+  overflow: visible;
   touch-action: none;
 }
 

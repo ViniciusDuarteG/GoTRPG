@@ -811,55 +811,76 @@ const mapTerrains = [
 ];
 
 const mapObjects = [
-  { id: 'tree', label: 'Árvore', atlas: 'objects', position: [0, 0] },
-  { id: 'pine', label: 'Pinheiro', atlas: 'objects', position: [1, 0] },
-  { id: 'bush', label: 'Arbusto', atlas: 'objects', position: [2, 0] },
-  { id: 'rock', label: 'Rocha', atlas: 'objects', position: [3, 0] },
-  { id: 'house', label: 'Casa', atlas: 'objects', position: [0, 1] },
-  { id: 'tower', label: 'Torre', atlas: 'objects', position: [1, 1] },
-  { id: 'camp', label: 'Tenda', atlas: 'objects', position: [2, 1] },
-  { id: 'fire', label: 'Fogueira', atlas: 'objects', position: [3, 1] },
-  { id: 'chest', label: 'Baú', atlas: 'objects', position: [0, 2] },
-  { id: 'barrel', label: 'Barril', atlas: 'objects', position: [1, 2] },
-  { id: 'table', label: 'Mesa', atlas: 'objects', position: [2, 2] },
-  { id: 'ruins', label: 'Ruínas', atlas: 'objects', position: [3, 2] },
-  { id: 'door', label: 'Porta', atlas: 'objects', position: [0, 3] },
-  { id: 'stairs', label: 'Escada', atlas: 'objects', position: [1, 3] },
-  { id: 'bridge', label: 'Ponte', atlas: 'objects', position: [2, 3] },
-  { id: 'well', label: 'Poço', atlas: 'objects', position: [3, 3] },
-  { id: 'wood_wall_h', label: 'Madeira — reta', atlas: 'walls', position: [0, 0], wall: true },
-  { id: 'wood_wall_v', label: 'Madeira — vertical', atlas: 'walls', position: [1, 0], wall: true },
-  { id: 'wood_wall_corner', label: 'Madeira — canto', atlas: 'walls', position: [2, 0], wall: true },
-  { id: 'wood_wall_t', label: 'Madeira — junção', atlas: 'walls', position: [3, 0], wall: true },
-  { id: 'stone_wall_h', label: 'Pedra — reta', atlas: 'walls', position: [0, 1], wall: true },
-  { id: 'stone_wall_v', label: 'Pedra — vertical', atlas: 'walls', position: [1, 1], wall: true },
-  { id: 'stone_wall_corner', label: 'Pedra — canto', atlas: 'walls', position: [2, 1], wall: true },
-  { id: 'stone_wall_t', label: 'Pedra — junção', atlas: 'walls', position: [3, 1], wall: true },
-  { id: 'masonry_wall_h', label: 'Alvenaria — reta', atlas: 'walls', position: [0, 2], wall: true },
-  { id: 'masonry_wall_v', label: 'Alvenaria — vertical', atlas: 'walls', position: [1, 2], wall: true },
-  { id: 'masonry_wall_corner', label: 'Alvenaria — canto', atlas: 'walls', position: [2, 2], wall: true },
-  { id: 'masonry_wall_t', label: 'Alvenaria — junção', atlas: 'walls', position: [3, 2], wall: true },
-  { id: 'stone_arch', label: 'Arco de pedra', atlas: 'walls', position: [0, 3], wall: true },
-  { id: 'wood_gate', label: 'Portão', atlas: 'walls', position: [1, 3], wall: true },
-  { id: 'stone_pillar', label: 'Pilar', atlas: 'walls', position: [2, 3], wall: true },
-  { id: 'wood_fence', label: 'Cerca', atlas: 'walls', position: [3, 3], wall: true },
-  { id: 'wall', label: 'Muralha antiga', atlas: 'walls', position: [0, 1], wall: true }
+  { id: 'tree', label: 'Árvore', atlas: 'objects', position: [0, 0], category: 'Cenário' },
+  { id: 'pine', label: 'Pinheiro', atlas: 'objects', position: [1, 0], category: 'Cenário' },
+  { id: 'bush', label: 'Arbusto', atlas: 'objects', position: [2, 0], category: 'Cenário' },
+  { id: 'rock', label: 'Rocha', atlas: 'objects', position: [3, 0], category: 'Cenário' },
+  { id: 'house', label: 'Casa', atlas: 'objects', position: [0, 1], category: 'Cenário' },
+  { id: 'tower', label: 'Torre', atlas: 'objects', position: [1, 1], category: 'Cenário' },
+  { id: 'camp', label: 'Tenda', atlas: 'objects', position: [2, 1], category: 'Cenário' },
+  { id: 'fire', label: 'Fogueira', atlas: 'objects', position: [3, 1], category: 'Cenário' },
+  { id: 'chest', label: 'Baú', atlas: 'objects', position: [0, 2], category: 'Cenário' },
+  { id: 'barrel', label: 'Barril', atlas: 'objects', position: [1, 2], category: 'Cenário' },
+  { id: 'table', label: 'Mesa', atlas: 'objects', position: [2, 2], category: 'Cenário' },
+  { id: 'ruins', label: 'Ruínas', atlas: 'objects', position: [3, 2], category: 'Cenário' },
+  { id: 'door', label: 'Porta', atlas: 'objects', position: [0, 3], category: 'Cenário' },
+  { id: 'stairs', label: 'Escada', atlas: 'objects', position: [1, 3], category: 'Cenário' },
+  { id: 'bridge', label: 'Ponte', atlas: 'objects', position: [2, 3], category: 'Cenário' },
+  { id: 'well', label: 'Poço', atlas: 'objects', position: [3, 3], category: 'Cenário' },
+  { id: 'wood_wall_h', label: 'Parede reta — madeira', atlas: 'walls', position: [0, 0], wall: true, category: 'Paredes' },
+  { id: 'wood_wall_corner', label: 'Parede de canto — madeira', atlas: 'walls', position: [2, 0], wall: true, category: 'Paredes' },
+  { id: 'wood_wall_t', label: 'Junção — madeira', atlas: 'walls', position: [3, 0], wall: true, category: 'Paredes' },
+  { id: 'stone_wall_h', label: 'Parede reta — pedra', atlas: 'walls', position: [0, 1], wall: true, category: 'Paredes' },
+  { id: 'stone_wall_corner', label: 'Parede de canto — pedra', atlas: 'walls', position: [2, 1], wall: true, category: 'Paredes' },
+  { id: 'stone_wall_t', label: 'Junção — pedra', atlas: 'walls', position: [3, 1], wall: true, category: 'Paredes' },
+  { id: 'masonry_wall_h', label: 'Parede reta — alvenaria', atlas: 'walls', position: [0, 2], wall: true, category: 'Paredes' },
+  { id: 'masonry_wall_corner', label: 'Parede de canto — alvenaria', atlas: 'walls', position: [2, 2], wall: true, category: 'Paredes' },
+  { id: 'masonry_wall_t', label: 'Junção — alvenaria', atlas: 'walls', position: [3, 2], wall: true, category: 'Paredes' },
+  { id: 'stone_arch', label: 'Arco de pedra', atlas: 'walls', position: [0, 3], wall: true, category: 'Paredes' },
+  { id: 'wood_gate', label: 'Portão', atlas: 'walls', position: [1, 3], wall: true, category: 'Paredes' },
+  { id: 'stone_pillar', label: 'Pilar', atlas: 'walls', position: [2, 3], wall: true, category: 'Paredes' },
+  { id: 'wood_fence', label: 'Cerca', atlas: 'walls', position: [3, 3], wall: true, category: 'Paredes' },
+  { id: 'wall', label: 'Muralha antiga', atlas: 'walls', position: [0, 1], wall: true, category: 'Paredes' },
+  { id: 'counter', label: 'Balcão reto', atlas: 'furniture', position: [0, 0], category: 'Mobília' },
+  { id: 'corner_counter', label: 'Balcão de canto', atlas: 'furniture', position: [1, 0], category: 'Mobília' },
+  { id: 'bench', label: 'Banco comprido', atlas: 'furniture', position: [2, 0], category: 'Mobília' },
+  { id: 'stool', label: 'Banco pequeno', atlas: 'furniture', position: [3, 0], category: 'Mobília' },
+  { id: 'throne', label: 'Trono nobre', atlas: 'furniture', position: [0, 1], category: 'Mobília' },
+  { id: 'iron_throne', label: 'Trono de ferro', atlas: 'furniture', position: [1, 1], category: 'Mobília' },
+  { id: 'simple_bed', label: 'Cama simples', atlas: 'furniture', position: [2, 1], category: 'Mobília' },
+  { id: 'canopy_bed', label: 'Cama com dossel', atlas: 'furniture', position: [3, 1], category: 'Mobília' },
+  { id: 'small_rug', label: 'Tapete pequeno', atlas: 'furniture', position: [0, 2], category: 'Mobília', ground: true },
+  { id: 'runner_rug', label: 'Tapete corredor', atlas: 'furniture', position: [1, 2], category: 'Mobília', ground: true },
+  { id: 'round_rug', label: 'Tapete redondo', atlas: 'furniture', position: [2, 2], category: 'Mobília', ground: true },
+  { id: 'chair', label: 'Cadeira', atlas: 'furniture', position: [3, 2], category: 'Mobília' },
+  { id: 'bookshelf', label: 'Estante de livros', atlas: 'furniture', position: [0, 3], category: 'Mobília' },
+  { id: 'cupboard', label: 'Armário', atlas: 'furniture', position: [1, 3], category: 'Mobília' },
+  { id: 'weapon_rack', label: 'Suporte de armas', atlas: 'furniture', position: [2, 3], category: 'Mobília' },
+  { id: 'fireplace', label: 'Lareira', atlas: 'furniture', position: [3, 3], category: 'Mobília' }
 ];
 
 const mapTerrainColors = Object.fromEntries(mapTerrains.map((terrain) => [terrain.id, terrain.color]));
-const mapObjectById = Object.fromEntries(mapObjects.map((object) => [object.id, object]));
+const legacyVerticalMapObjects = [
+  { id: 'wood_wall_v', atlas: 'walls', position: [0, 0], wall: true, defaultRotation: 90 },
+  { id: 'stone_wall_v', atlas: 'walls', position: [0, 1], wall: true, defaultRotation: 90 },
+  { id: 'masonry_wall_v', atlas: 'walls', position: [0, 2], wall: true, defaultRotation: 90 }
+];
+const mapObjectById = Object.fromEntries([...mapObjects, ...legacyVerticalMapObjects].map((object) => [object.id, object]));
 const blockingMapObjects = new Set([
   'tree', 'pine', 'rock', 'house', 'tower', 'chest', 'barrel', 'table',
   'ruins', 'well', 'wall', 'wood_wall_h', 'wood_wall_v', 'wood_wall_corner',
   'wood_wall_t', 'stone_wall_h', 'stone_wall_v', 'stone_wall_corner',
   'stone_wall_t', 'masonry_wall_h', 'masonry_wall_v', 'masonry_wall_corner',
-  'masonry_wall_t', 'stone_arch', 'wood_gate', 'stone_pillar', 'wood_fence'
+  'masonry_wall_t', 'stone_arch', 'wood_gate', 'stone_pillar', 'wood_fence',
+  'counter', 'corner_counter', 'bench', 'stool', 'throne', 'iron_throne',
+  'simple_bed', 'canopy_bed', 'chair', 'bookshelf', 'cupboard', 'weapon_rack', 'fireplace'
 ]);
 const interactiveDoorObjects = new Set(['door', 'wood_gate', 'stone_arch']);
 const mapAssetPaths = {
   terrain: '/map-assets/medieval-terrain.png',
   objects: '/map-assets/medieval-objects.png',
-  walls: '/map-assets/medieval-walls.png'
+  walls: '/map-assets/medieval-walls.png',
+  furniture: '/map-assets/medieval-furniture.png'
 };
 
 function mapSpriteStyle(objectName) {
@@ -870,6 +891,21 @@ function mapSpriteStyle(objectName) {
     backgroundImage: `url("${mapAssetPaths[object.atlas]}")`,
     backgroundPosition: `${column * 100 / 3}% ${row * 100 / 3}%`
   };
+}
+
+function mapObjectRotation(objectName, setting = {}) {
+  return (Number(setting.rotation) || 0) + (mapObjectById[objectName]?.defaultRotation || 0);
+}
+
+function mapObjectTransform(objectName, setting = {}) {
+  const object = mapObjectById[objectName];
+  const rotation = mapObjectRotation(objectName, setting);
+  const elevation = Number(setting.elevation) || 0;
+  const scale = Number(setting.scale) || 1;
+  if (object?.wall) {
+    return `translateY(-${elevation * 8}%) rotate(${rotation}deg) translateY(-46%) scale(${scale})`;
+  }
+  return `translateY(-${elevation * 8}%) rotate(${rotation}deg) scale(${scale})`;
 }
 
 function mapBrightnessColor(value) {
@@ -900,12 +936,17 @@ function buildMapTemplate(template) {
   const height = 14;
   const tiles = Array(width * height).fill(template.base || 'grass');
   const objects = {};
+  const objectSettings = {};
   const indexAt = (x, y) => y * width + x;
   const terrain = (x, y, value) => {
     if (x >= 0 && x < width && y >= 0 && y < height) tiles[indexAt(x, y)] = value;
   };
-  const object = (x, y, value) => {
-    if (x >= 0 && x < width && y >= 0 && y < height) objects[indexAt(x, y)] = value;
+  const object = (x, y, value, rotation = 0) => {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      const index = indexAt(x, y);
+      objects[index] = value;
+      objectSettings[index] = { rotation, scale: 1, elevation: 0, layer: mapObjectById[value]?.ground ? 'ground' : 'objects' };
+    }
   };
   const rect = (x1, y1, x2, y2, value) => {
     for (let y = y1; y <= y2; y += 1) {
@@ -930,8 +971,8 @@ function buildMapTemplate(template) {
       object(x, 11, 'stone_wall_h');
     }
     for (let y = 3; y <= 10; y += 1) {
-      object(4, y, 'stone_wall_v');
-      object(19, y, 'stone_wall_v');
+      object(4, y, 'stone_wall_h', 90);
+      object(19, y, 'stone_wall_h', 90);
     }
     [[4, 2], [19, 2], [4, 11], [19, 11]].forEach(([x, y]) => object(x, y, 'stone_pillar'));
     object(11, 11, 'stone_arch');
@@ -971,7 +1012,7 @@ function buildMapTemplate(template) {
     height,
     tiles,
     objects,
-    object_settings: {},
+    object_settings: objectSettings,
     grid_visible: false,
     time_of_day: template.time || 'day',
     brightness: template.brightness || 100
@@ -2031,10 +2072,11 @@ function loadMapAsset(key) {
 }
 
 async function renderCreatedMap(map) {
-  const [terrainAtlas, objectAtlas, wallAtlas] = await Promise.all([
+  const [terrainAtlas, objectAtlas, wallAtlas, furnitureAtlas] = await Promise.all([
     loadMapAsset('terrain'),
     loadMapAsset('objects'),
-    loadMapAsset('walls')
+    loadMapAsset('walls'),
+    loadMapAsset('furniture')
   ]);
   const cellSize = Math.max(28, Math.min(64, Math.floor(1600 / map.width), Math.floor(1000 / map.height)));
   const canvas = document.createElement('canvas');
@@ -2080,18 +2122,23 @@ async function renderCreatedMap(map) {
     const index = Number(rawIndex);
     const x = (index % map.width) * cellSize;
     const y = Math.floor(index / map.width) * cellSize;
-    const source = object.atlas === 'walls' ? wallAtlas : objectAtlas;
+    const source = {
+      walls: wallAtlas,
+      furniture: furnitureAtlas,
+      objects: objectAtlas
+    }[object.atlas] || objectAtlas;
     const sourceWidth = source.naturalWidth / 4;
     const sourceHeight = source.naturalHeight / 4;
     const [column, row] = object.position;
     const overscan = object.wall ? cellSize * .07 : 0;
     const scale = Math.min(2.5, Math.max(.4, Number(setting.scale) || 1));
-    const rotation = (Number(setting.rotation) || 0) * Math.PI / 180;
+    const rotation = mapObjectRotation(objectName, setting) * Math.PI / 180;
     const centerX = x + cellSize / 2;
     const centerY = y + cellSize / 2 - (Number(setting.elevation) || 0) * cellSize * .08;
     context.save();
     context.translate(centerX, centerY);
     context.rotate(rotation);
+    if (object.wall) context.translate(0, -cellSize * .46);
     context.scale(scale, scale);
     context.drawImage(
       source,
@@ -2286,7 +2333,7 @@ function CampaignMaps({ go, id }) {
           rotation: 0,
           scale: 1,
           elevation: 0,
-          layer: 'objects'
+          layer: mapObjectById[selectedTool]?.ground ? 'ground' : 'objects'
         };
       }
       return { ...current, objects, object_settings: objectSettings };
@@ -2771,24 +2818,28 @@ function CampaignMaps({ go, id }) {
 
               {campaign?.is_owner && (
                 <div className="mapPalette">
-                  {(selectedLayer === 'terrain' ? mapTerrains : mapObjects).map((tool) => (
-                    <button
-                      key={tool.id}
-                      className={selectedTool === tool.id ? 'active' : ''}
-                      onClick={() => setSelectedTool(tool.id)}
-                      title={tool.label}
-                    >
-                      {selectedLayer === 'terrain'
-                        ? <i className={`terrain-${tool.id}`} />
-                        : <span className={`mapObjectThumb${tool.wall ? ' wallSprite' : ''}`} style={mapSpriteStyle(tool.id)} />}
-                      <small>{tool.label}</small>
-                    </button>
-                  ))}
                   {selectedLayer === 'objects' && (
                     <button className={selectedTool === 'select' ? 'active' : ''} onClick={() => setSelectedTool('select')}>
                       <MousePointer2 size={22} /><small>Ajustar</small>
                     </button>
                   )}
+                  {(selectedLayer === 'terrain' ? mapTerrains : mapObjects).map((tool, index, tools) => (
+                    <React.Fragment key={tool.id}>
+                      {selectedLayer === 'objects' && tool.category !== tools[index - 1]?.category && (
+                        <span className="mapPaletteCategory">{tool.category}</span>
+                      )}
+                      <button
+                        className={selectedTool === tool.id ? 'active' : ''}
+                        onClick={() => setSelectedTool(tool.id)}
+                        title={tool.label}
+                      >
+                        {selectedLayer === 'terrain'
+                          ? <i className={`terrain-${tool.id}`} />
+                          : <span className={`mapObjectThumb${tool.wall ? ' wallSprite' : ''}`} style={mapSpriteStyle(tool.id)} />}
+                        <small>{tool.label}</small>
+                      </button>
+                    </React.Fragment>
+                  ))}
                   <button className={selectedTool === 'erase' ? 'active' : ''} onClick={() => setSelectedTool('erase')}>
                     <Eraser size={22} /><small>Borracha</small>
                   </button>
@@ -2800,7 +2851,7 @@ function CampaignMaps({ go, id }) {
 
               {campaign?.is_owner && selectedLayer === 'objects' && selectedObjectCell !== null && currentMap.objects[selectedObjectCell] && (
                 <div className="objectTransformBar">
-                  <strong><RotateCw size={16} />Objeto selecionado</strong>
+                  <strong><RotateCw size={16} />{mapObjectById[currentMap.objects[selectedObjectCell]]?.label || 'Objeto selecionado'}</strong>
                   <label>Rotação
                     <select
                       value={currentMap.object_settings?.[selectedObjectCell]?.rotation || 0}
@@ -2809,6 +2860,15 @@ function CampaignMaps({ go, id }) {
                       {[0, 45, 90, 135, 180, 225, 270, 315].map((value) => <option key={value} value={value}>{value}°</option>)}
                     </select>
                   </label>
+                  {mapObjectById[currentMap.objects[selectedObjectCell]]?.wall && (
+                    <button
+                      type="button"
+                      className="rotateWallButton"
+                      onClick={() => updateSelectedObject({
+                        rotation: ((Number(currentMap.object_settings?.[selectedObjectCell]?.rotation) || 0) + 90) % 360
+                      })}
+                    ><RotateCw size={15} />Girar parede 90°</button>
+                  )}
                   <label>Tamanho
                     <input
                       type="range"
@@ -2867,7 +2927,7 @@ function CampaignMaps({ go, id }) {
                             className={`mapObjectSprite${mapObjectById[currentMap.objects[index]]?.wall ? ' wallSprite' : ''}${objectSetting.layer === 'gm' ? ' gmLayerSprite' : ''}`}
                             style={{
                               ...mapSpriteStyle(currentMap.objects[index]),
-                              transform: `translateY(-${(objectSetting.elevation || 0) * 8}%) rotate(${objectSetting.rotation || 0}deg) scale(${objectSetting.scale || 1})`,
+                              transform: mapObjectTransform(currentMap.objects[index], objectSetting),
                               zIndex: layerZ + (objectSetting.elevation || 0)
                             }}
                           />
