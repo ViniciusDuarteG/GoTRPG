@@ -226,9 +226,106 @@ def items_weight(items: list[dict], with_quantity: bool = False) -> float:
     return total
 
 
+def clean_dnd_character_data(data: dict) -> dict:
+    ability_keys = ("forca", "destreza", "constituicao", "inteligencia", "sabedoria", "carisma")
+    skill_keys = (
+        "acrobacia", "adestrarAnimais", "arcanismo", "atletismo", "atuacao", "enganacao",
+        "furtividade", "historia", "intimidacao", "intuicao", "investigacao", "medicina",
+        "natureza", "percepcao", "persuasao", "prestidigitacao", "religiao", "sobrevivencia",
+    )
+
+    def text(key: str, limit: int = 10000) -> str:
+        return str(data.get(key, ""))[:limit]
+
+    def integer(value: object, default: int = 0, minimum: int = 0, maximum: int = 999999) -> int:
+        try:
+            parsed = int(float(value))
+        except (TypeError, ValueError):
+            parsed = default
+        return max(minimum, min(maximum, parsed))
+
+    attributes = data.get("atributos") if isinstance(data.get("atributos"), dict) else {}
+    saves = data.get("salvaguardas") if isinstance(data.get("salvaguardas"), dict) else {}
+    skills_data = data.get("pericias") if isinstance(data.get("pericias"), dict) else {}
+    death_saves = data.get("testesMorte") if isinstance(data.get("testesMorte"), dict) else {}
+    coins = data.get("moedas") if isinstance(data.get("moedas"), dict) else {}
+    magic = data.get("magia") if isinstance(data.get("magia"), dict) else {}
+    slots = magic.get("slots") if isinstance(magic.get("slots"), dict) else {}
+
+    def spell_slot(level: int) -> dict:
+        value = slots.get(str(level), slots.get(level, {}))
+        return value if isinstance(value, dict) else {}
+
+    attacks = []
+    for attack in data.get("ataques", []) if isinstance(data.get("ataques"), list) else []:
+        if not isinstance(attack, dict):
+            continue
+        attacks.append({
+            "nome": str(attack.get("nome", ""))[:120],
+            "bonus": str(attack.get("bonus", ""))[:40],
+            "dano": str(attack.get("dano", ""))[:80],
+            "tipo": str(attack.get("tipo", ""))[:240],
+        })
+        if len(attacks) >= 50:
+            break
+
+    return {
+        "sistema": "dnd5e",
+        "nome": text("nome", 120),
+        "imagem": text("imagem", 8_000_000),
+        "jogador": text("jogador", 120),
+        "classe": text("classe", 120),
+        "nivel": str(integer(data.get("nivel"), 1, 1, 20)),
+        "especie": text("especie", 120),
+        "antecedente": text("antecedente", 120),
+        "alinhamento": text("alinhamento", 80),
+        "xp": str(integer(data.get("xp"), 0, 0, 999999999)),
+        "inspiracao": bool(data.get("inspiracao")),
+        "atributos": {key: integer(attributes.get(key), 10, 1, 30) for key in ability_keys},
+        "salvaguardas": {key: bool(saves.get(key)) for key in ability_keys},
+        "pericias": {key: integer(skills_data.get(key), 0, 0, 2) for key in skill_keys},
+        "ca": str(integer(data.get("ca"), 10, 0, 99)),
+        "bonusIniciativa": str(integer(data.get("bonusIniciativa"), 0, -99, 99)),
+        "deslocamento": str(integer(data.get("deslocamento"), 9, 0, 999)),
+        "pvMax": str(integer(data.get("pvMax"), 0, 0, 99999)),
+        "pvAtual": str(integer(data.get("pvAtual"), 0, 0, 99999)),
+        "pvTemp": str(integer(data.get("pvTemp"), 0, 0, 99999)),
+        "dadosVida": text("dadosVida", 120),
+        "testesMorte": {
+            "sucessos": integer(death_saves.get("sucessos"), 0, 0, 3),
+            "falhas": integer(death_saves.get("falhas"), 0, 0, 3),
+        },
+        "ataques": attacks,
+        "proficienciasIdiomas": text("proficienciasIdiomas"),
+        "equipamento": text("equipamento"),
+        "moedas": {key: str(integer(coins.get(key), 0, 0, 999999999)) for key in ("pc", "pp", "pe", "po", "pl")},
+        "caracteristicas": text("caracteristicas"),
+        "tracos": text("tracos"),
+        "ideais": text("ideais"),
+        "vinculos": text("vinculos"),
+        "defeitos": text("defeitos"),
+        "aparencia": text("aparencia"),
+        "historia": text("historia"),
+        "magia": {
+            "habilidade": str(magic.get("habilidade", "")) if magic.get("habilidade") in ability_keys else "",
+            "truques": str(magic.get("truques", ""))[:10000],
+            "magias": str(magic.get("magias", ""))[:20000],
+            "slots": {
+                str(level): {
+                    "total": str(integer(spell_slot(level).get("total"), 0, 0, 99)),
+                    "usados": str(integer(spell_slot(level).get("usados"), 0, 0, 99)),
+                }
+                for level in range(1, 10)
+            },
+        },
+    }
+
+
 def clean_character_data(data: object) -> dict | None:
     if not isinstance(data, dict):
         return None
+    if data.get("sistema") == "dnd5e":
+        return clean_dnd_character_data(data)
     cleaned = dict(data)
     house = str(cleaned.get("casa", "")).strip()
     if house not in HOUSE_OPTIONS:
@@ -1612,7 +1709,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.is_superadmin(conn, user_id):
                 rows = conn.execute(
                     """
-                    SELECT ch.id, ch.name, ch.updated_at, u.username AS owner_username
+                    SELECT ch.id, ch.name, ch.updated_at, ch.data, u.username AS owner_username
                     FROM characters ch
                     JOIN users u ON u.id = ch.user_id
                     ORDER BY ch.updated_at DESC
@@ -1620,10 +1717,21 @@ class Handler(BaseHTTPRequestHandler):
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, name, updated_at FROM characters WHERE user_id = ? ORDER BY updated_at DESC",
+                    "SELECT id, name, updated_at, data FROM characters WHERE user_id = ? ORDER BY updated_at DESC",
                     (user_id,),
                 ).fetchall()
-        self.send_json(200, [dict(row) for row in rows])
+        characters = []
+        for row in rows:
+            item = dict(row)
+            try:
+                character_data = json.loads(item.pop("data", "{}"))
+            except (TypeError, json.JSONDecodeError):
+                character_data = {}
+            if not isinstance(character_data, dict):
+                character_data = {}
+            item["system"] = "dnd5e" if character_data.get("sistema") == "dnd5e" else "got"
+            characters.append(item)
+        self.send_json(200, characters)
 
     def create_character(self) -> None:
         user_id = self.user_id()

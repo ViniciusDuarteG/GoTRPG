@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, BookOpen, CircleDashed, CloudRain, Copy, Crosshair, Crown, Dices, DoorClosed, DoorOpen, Download, Eraser, Eye, EyeOff, Grid3X3, Heart, History, Image as ImageIcon, KeyRound, Layers3, Lightbulb, LogOut, Map as MapIcon, Minus, MousePointer2, Pause, Pencil, Play, Plus, Redo2, RotateCw, Ruler, Save, ScrollText, Search, Shield, SkipBack, SkipForward, Skull, Sun, Swords, Sword, Trash2, TriangleAlert, Undo2, Upload, User, Users, X, Zap } from 'lucide-react';
+import DndCharacterSheet, { createBlankDndCharacter, mergeDndCharacter } from './DndCharacterSheet';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -1656,8 +1657,31 @@ function ImageField({ value, onChange }) {
   );
 }
 
+function CharacterSystemPicker({ onSelect }) {
+  return (
+    <main className="formPage systemPickerPage">
+      <div className="formHeader">
+        <div><p className="kicker">Novo personagem</p><h1>Escolha o sistema</h1></div>
+      </div>
+      <div className="systemPickerGrid">
+        <button type="button" onClick={() => onSelect('got')}>
+          <Crown size={34} />
+          <strong>Guerra dos Tronos RPG</strong>
+          <span>Intriga, casas, combate e honra.</span>
+        </button>
+        <button type="button" className="dndSystemCard" onClick={() => onSelect('dnd5e')}>
+          <Dices size={34} />
+          <strong>Dungeons &amp; Dragons 5e</strong>
+          <span>Atributos, perícias, combate e magia.</span>
+        </button>
+      </div>
+    </main>
+  );
+}
+
 function CharacterForm({ go, id }) {
   const [data, setData] = useState(blankCharacter);
+  const [system, setSystem] = useState(id ? null : '');
   const [loading, setLoading] = useState(Boolean(id));
   const [editing, setEditing] = useState(!id);
   const [canEdit, setCanEdit] = useState(!id);
@@ -1667,22 +1691,30 @@ function CharacterForm({ go, id }) {
     if (!id) return;
     request(`/characters/${id}`)
       .then((character) => {
+        if (character.data?.sistema === 'dnd5e') {
+          setData(mergeDndCharacter(character.data));
+          setSystem('dnd5e');
+          setCanEdit(Boolean(character.can_edit));
+          return;
+        }
         const loaded = { ...blankCharacter, ...character.data };
         setData(withCalculatedDefenses({
           ...loaded,
           casa: houseOptions.includes(loaded.casa) ? loaded.casa : 'Sem Casa',
           armadura: armorByName(loaded.armadura).name
         }));
+        setSystem('got');
         setCanEdit(Boolean(character.can_edit));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
 
-  const houseValid = houseOptions.includes(data.casa);
-  const maxWeight = carryLimit(data);
-  const inventoryWeight = listWeight(data.inventario, true);
-  const weaponsWeight = listWeight(data.armasAtaques, false);
+  const isDnd = system === 'dnd5e';
+  const houseValid = isDnd || houseOptions.includes(data.casa);
+  const maxWeight = isDnd ? 0 : carryLimit(data);
+  const inventoryWeight = isDnd ? 0 : listWeight(data.inventario, true);
+  const weaponsWeight = isDnd ? 0 : listWeight(data.armasAtaques, false);
   const totalWeight = inventoryWeight + weaponsWeight;
   const weightExceeded = totalWeight > maxWeight;
 
@@ -1742,12 +1774,12 @@ function CharacterForm({ go, id }) {
       setError('Selecione uma casa válida');
       return;
     }
-    if (weightExceeded) {
+    if (!isDnd && weightExceeded) {
       setError(`Peso excede ${formatWeight(maxWeight)} kg`);
       return;
     }
     try {
-      const characterData = withCalculatedDefenses(data);
+      const characterData = isDnd ? mergeDndCharacter(data) : withCalculatedDefenses(data);
       const saved = await request(id ? `/characters/${id}` : '/characters', {
         method: id ? 'PUT' : 'POST',
         body: JSON.stringify({ data: characterData })
@@ -1772,11 +1804,17 @@ function CharacterForm({ go, id }) {
   }
 
   if (loading) return <main className="centerPage">Carregando...</main>;
+  if (!id && !system) {
+    return <CharacterSystemPicker onSelect={(selected) => {
+      setSystem(selected);
+      setData(selected === 'dnd5e' ? createBlankDndCharacter() : blankCharacter);
+    }} />;
+  }
 
   return (
     <main className="formPage">
       <div className="formHeader">
-        <h1>{id ? data.nome || 'Personagem' : 'Novo personagem'}</h1>
+        <div><span className={`systemBadge ${isDnd ? 'dnd' : ''}`}>{isDnd ? 'D&D 5e' : 'Guerra dos Tronos RPG'}</span><h1>{id ? data.nome || 'Personagem' : 'Novo personagem'}</h1></div>
         <div className="actions">
           {id && canEdit && <button onClick={() => setEditing(!editing)}>{editing ? 'Visualizar' : 'Alterar ficha'}</button>}
           {id && canEdit && <button className="danger" onClick={removeCharacter}><Trash2 size={18} />Excluir</button>}
@@ -1785,6 +1823,9 @@ function CharacterForm({ go, id }) {
       </div>
       {error && <p className="error">{error}</p>}
       <fieldset disabled={!editing || !canEdit} className="sheetGrid">
+        {isDnd ? (
+          <DndCharacterSheet data={data} onChange={setData} ImageField={ImageField} />
+        ) : (<>
         <section className="parchment">
           <h2>Identidade</h2>
           <ImageField value={data.imagem} onChange={(v) => set('imagem', v)} />
@@ -1885,6 +1926,7 @@ function CharacterForm({ go, id }) {
             <Field label="Dinheiro (Coroas)" type="number" value={data.dinheiro} onChange={(v) => set('dinheiro', v)} />
           </div>
         </section>
+        </>)}
       </fieldset>
     </main>
   );
@@ -1921,7 +1963,10 @@ function Characters({ go }) {
       <div className="characterList">
         {characters.map((character) => (
           <article key={character.id}>
-            <strong>{character.name}</strong>
+            <div className="characterIdentity">
+              <strong>{character.name}</strong>
+              <small>{character.system === 'dnd5e' ? 'D&D 5e' : 'Guerra dos Tronos RPG'}</small>
+            </div>
             <div className="rowActions">
               <button onClick={() => go(`/characters/${character.id}`)}><Eye size={18} />Ver</button>
               <button className="danger" onClick={() => removeCharacter(character)}><Trash2 size={18} />Excluir</button>
@@ -3837,7 +3882,7 @@ function CampaignBoard({ go, id }) {
     const token = tokenById[tokenId];
     const maximum = token?.enemy
       ? Number(token.source?.health) || 1
-      : Math.max(1, Number(token?.source?.data?.saude) || 1);
+      : Math.max(1, Number(token?.source?.data?.sistema === 'dnd5e' ? token.source.data.pvMax : token?.source?.data?.saude) || 1);
     const current = token?.enemy ? Number(token.source?.current_health) || maximum : maximum;
     return { current_health: current, max_health: maximum, conditions: [] };
   }
@@ -3955,17 +4000,23 @@ function CampaignBoard({ go, id }) {
 
   const tokenCatalog = useMemo(() => [
     ...(campaign?.characters || []).map((character) => {
+      const isDnd = character.data?.sistema === 'dnd5e';
       const abilities = character.data?.habilidades || {};
       const grade = (name) => Number(abilities[name]?.grau) || 0;
+      const dexterityModifier = Math.floor(((Number(character.data?.atributos?.destreza) || 10) - 10) / 2);
+      const dndAttackBonus = Number.parseInt(String(character.data?.ataques?.[0]?.bonus || '0'), 10) || 0;
       return {
         id: String(character.id),
         name: character.name,
         enemy: false,
         user_id: character.user_id,
         source: character,
-        initiative_bonus: grade('Agilidade'),
-        attack_dice: Math.max(1, grade('Luta'), grade('Pontaria')),
-        defense: Math.max(1, Number(character.data?.combate) || 6)
+        initiative_bonus: isDnd ? dexterityModifier + (Number(character.data?.bonusIniciativa) || 0) : grade('Agilidade'),
+        initiative_sides: isDnd ? 20 : 6,
+        attack_dice: isDnd ? 1 : Math.max(1, grade('Luta'), grade('Pontaria')),
+        attack_sides: isDnd ? 20 : 6,
+        attack_bonus: isDnd ? dndAttackBonus : 0,
+        defense: Math.max(1, Number(isDnd ? character.data?.ca : character.data?.combate) || 6)
       };
     }),
     ...enemies.map((enemy) => {
@@ -3977,7 +4028,10 @@ function CampaignBoard({ go, id }) {
         user_id: null,
         source: enemy,
         initiative_bonus: Math.max(0, Math.floor((Number(enemy.movement) || 3) / 2)),
+        initiative_sides: 6,
         attack_dice: Math.max(1, Number(attackMatch?.[1]) || 3),
+        attack_sides: 6,
+        attack_bonus: 0,
         defense: Math.max(1, Number(enemy.combat_defense) || 6)
       };
     })
@@ -3997,7 +4051,7 @@ function CampaignBoard({ go, id }) {
     const order = tokenCatalog
       .map((token) => ({
         id: token.id,
-        initiative: Math.floor(Math.random() * 6) + 1 + token.initiative_bonus
+        initiative: Math.floor(Math.random() * token.initiative_sides) + 1 + token.initiative_bonus
       }))
       .sort((a, b) => b.initiative - a.initiative);
     if (!order.length) return;
@@ -4035,7 +4089,7 @@ function CampaignBoard({ go, id }) {
     try {
       result = await request(`/campaigns/${id}/rolls`, {
         method: 'POST',
-        body: JSON.stringify({ sides: 6, quantity: Math.min(20, attackerData.attack_dice) })
+        body: JSON.stringify({ sides: attackerData.attack_sides, quantity: Math.min(20, attackerData.attack_dice) })
       });
       setLastRoll(result);
       setRolls((current) => [result, ...current.filter((roll) => roll.id !== result.id)].slice(0, 30));
@@ -4043,6 +4097,7 @@ function CampaignBoard({ go, id }) {
       setError(err.message);
       return;
     }
+    const attackTotal = result.total + attackerData.attack_bonus;
     await saveBoardState({
       combat: {
         effect: {
@@ -4050,9 +4105,9 @@ function CampaignBoard({ go, id }) {
           type: 'attack',
           attacker,
           target,
-          total: result.total,
+          total: attackTotal,
           defense: targetData.defense,
-          success: result.total >= targetData.defense
+          success: attackTotal >= targetData.defense
         }
       }
     });
@@ -4817,7 +4872,7 @@ function CampaignDetail({ go, id }) {
                     <article key={character.id}>
                       <div>
                         <strong>{character.name}</strong>
-                        <p>{character.data?.casa || 'Sem casa'} / jogador: {character.data?.jogador || character.owner_username}</p>
+                        <p>{character.data?.sistema === 'dnd5e' ? `${character.data?.classe || 'Sem classe'} nível ${character.data?.nivel || 1}` : character.data?.casa || 'Sem casa'} / jogador: {character.data?.jogador || character.owner_username}</p>
                         <small>Dono: {character.owner_username}</small>
                       </div>
                       <div className="rowActions">

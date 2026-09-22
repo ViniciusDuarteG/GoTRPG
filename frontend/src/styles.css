@@ -542,6 +542,448 @@ textarea {
   line-height: 1;
 }
 
+.systemPickerPage {
+  max-width: 900px;
+}
+
+.systemPickerPage .formHeader h1 {
+  margin: 4px 0 0;
+}
+
+.systemPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.systemPickerGrid button {
+  min-height: 220px;
+  padding: 28px;
+  border-color: #a77a3a;
+  background: linear-gradient(145deg, rgba(59, 31, 18, .98), rgba(24, 12, 8, .98));
+  flex-direction: column;
+  text-align: center;
+}
+
+.systemPickerGrid button.dndSystemCard {
+  border-color: #b8312c;
+  background: linear-gradient(145deg, #521b1a, #1c1010);
+}
+
+.systemPickerGrid strong {
+  font-family: Cinzel, serif;
+  font-size: 21px;
+}
+
+.systemPickerGrid span {
+  color: #d4b985;
+}
+
+.systemBadge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  border: 1px solid #8b5a2d;
+  border-radius: 999px;
+  color: #d4b985;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.systemBadge.dnd {
+  border-color: #a92e29;
+  color: #ffb0aa;
+}
+
+.formHeader > div > h1 {
+  margin: 3px 0 0;
+}
+
+.dndSheet {
+  display: contents;
+}
+
+.dndSheet .parchment {
+  border-color: #8f2925;
+  background: linear-gradient(rgba(255, 246, 220, .96), rgba(229, 207, 163, .94)), #e8d2a7;
+  box-shadow: inset 0 4px 0 #8f2925;
+}
+
+.dndSheet .parchment h2 {
+  background: linear-gradient(90deg, #8b1815, #52100e);
+  letter-spacing: .04em;
+}
+
+.dndIdentity {
+  position: relative;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  overflow: hidden;
+}
+
+.dndIdentity .imageField {
+  width: 220px;
+  margin: 0;
+  padding-top: 38px;
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+
+.dndIdentity .imagePreview {
+  width: 132px;
+  height: 158px;
+  min-height: 0;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+.dndIdentity .imagePicker {
+  gap: 7px;
+}
+
+.dndIdentity .imageActions,
+.dndIdentity .availableImages {
+  justify-content: center;
+}
+
+.dndIdentity .imageActions button,
+.dndIdentity .uploadButton {
+  min-height: 34px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
+.dndIdentity .imagePicker > strong {
+  text-align: center;
+  font-size: 11px;
+}
+
+.dndIdentity .availableImages {
+  max-height: 54px;
+  overflow-y: auto;
+}
+
+.dndIdentity .availableImages button {
+  width: 46px;
+  height: 46px;
+  min-height: 46px;
+}
+
+.dndEdition {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: #791714;
+  font-family: Cinzel, serif;
+  pointer-events: none;
+}
+
+.dndEdition span {
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.dndEdition strong {
+  font-size: 16px;
+}
+
+.dndIdentityFields {
+  padding-top: 44px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.dndCharacterName {
+  grid-column: span 2;
+}
+
+.dndAbilityGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dndAbility {
+  padding: 10px;
+  border: 1px solid #9e6839;
+  border-radius: 18px 18px 8px 8px;
+  background: rgba(255, 250, 232, .72);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+}
+
+.dndAbility > span {
+  color: #5b2117;
+  font-family: Cinzel, serif;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dndAbility > strong {
+  grid-row: span 2;
+  color: #761c17;
+  font-family: Cinzel, serif;
+  font-size: 28px;
+}
+
+.dndAbility > input {
+  width: 64px;
+  padding: 5px;
+  text-align: center;
+}
+
+.dndAbility > label {
+  grid-column: 1 / -1;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.dndQuickStats {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dndQuickStats > div,
+.dndInspiration {
+  min-height: 62px;
+  padding: 9px;
+  border: 1px solid #9e6839;
+  border-radius: 8px;
+  background: rgba(255, 250, 232, .7);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dndQuickStats span,
+.dndCombatStats span,
+.dndSpellStats span {
+  color: #4d2418;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dndQuickStats strong,
+.dndCombatStats strong,
+.dndSpellStats strong {
+  color: #7b1d18;
+  font-family: Cinzel, serif;
+  font-size: 25px;
+}
+
+.dndInspiration {
+  grid-template-columns: 20px 1fr;
+  justify-content: start;
+}
+
+.dndSkills {
+  display: grid;
+  gap: 5px;
+}
+
+.dndSkills label {
+  min-height: 35px;
+  padding-bottom: 5px;
+  border-bottom: 1px dotted rgba(92, 46, 25, .35);
+  display: grid;
+  grid-template-columns: 48px 38px 1fr auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.dndSkills select {
+  padding: 4px;
+  text-align: center;
+}
+
+.dndSkills strong {
+  color: #761c17;
+  text-align: center;
+}
+
+.dndSkills small {
+  color: #795949;
+  font-weight: 800;
+}
+
+.dndCombatStats,
+.dndSpellStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dndCombatStats > label,
+.dndCombatStats > div,
+.dndSpellStats > label,
+.dndSpellStats > div {
+  min-height: 110px;
+  padding: 12px;
+  border: 1px solid #9e6839;
+  border-radius: 28px 28px 8px 8px;
+  background: rgba(255, 250, 232, .72);
+  align-content: center;
+  text-align: center;
+}
+
+.dndCombatStats > div,
+.dndSpellStats > div {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+}
+
+.dndCombatStats label label {
+  font-size: 11px;
+}
+
+.dndHpFields {
+  margin-top: 12px;
+}
+
+.dndRecovery {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 10px;
+}
+
+.dndDeathSaves {
+  padding: 10px;
+  border: 1px solid #9e6839;
+  border-radius: 8px;
+  background: rgba(255, 250, 232, .72);
+}
+
+.dndDotTrack {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dndDotTrack span {
+  width: 66px;
+  font-size: 12px;
+}
+
+.dndDotTrack button {
+  width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: #f7e6bd;
+}
+
+.dndDotTrack button.active {
+  background: #8b1815;
+  box-shadow: inset 0 0 0 4px #f7e6bd;
+}
+
+.dndSectionHeading {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dndSectionHeading h2 {
+  flex: 1;
+  margin: 0 !important;
+}
+
+.dndSectionHeading button {
+  min-height: 38px;
+}
+
+.dndAttackTable {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.dndAttackHeader,
+.dndAttackRow {
+  display: grid;
+  grid-template-columns: 1.3fr 70px 100px 1.2fr 42px;
+  gap: 6px;
+  align-items: center;
+}
+
+.dndAttackHeader {
+  padding: 0 7px;
+  color: #5b2117;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dndAttackRow input {
+  min-width: 0;
+}
+
+.dndAttackRow button {
+  min-height: 40px;
+  padding: 6px;
+}
+
+.dndCoins {
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.dndSheet textarea {
+  min-height: 110px;
+}
+
+.dndSpellSlots {
+  margin: 14px 0;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(80px, 1fr));
+  gap: 7px;
+  overflow-x: auto;
+}
+
+.dndSpellSlots > div {
+  min-width: 80px;
+  padding: 8px;
+  border: 1px solid #9e6839;
+  border-radius: 8px;
+  background: rgba(255, 250, 232, .72);
+  display: grid;
+  gap: 6px;
+}
+
+.dndSpellSlots > div > strong {
+  color: #7b1d18;
+  font-family: Cinzel, serif;
+  text-align: center;
+}
+
+.dndSpellSlots label {
+  font-size: 10px;
+}
+
+.dndSpellSlots input {
+  padding: 6px;
+}
+
 .characterList {
   display: grid;
   gap: 12px;
@@ -557,6 +999,11 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.characterIdentity {
+  display: grid;
+  gap: 5px;
 }
 
 .characterList p {
@@ -3036,6 +3483,53 @@ textarea {
   .enemyFormGrid,
   .enemyTextFields {
     grid-template-columns: 1fr;
+  }
+
+  .systemPickerGrid,
+  .dndIdentity,
+  .dndIdentityFields,
+  .dndCombatStats,
+  .dndSpellStats,
+  .dndRecovery {
+    grid-template-columns: 1fr;
+  }
+
+  .dndIdentityFields {
+    padding-top: 32px;
+  }
+
+  .dndIdentity .imageField {
+    width: 100%;
+    padding-top: 30px;
+  }
+
+  .dndCharacterName {
+    grid-column: auto;
+  }
+
+  .dndAbilityGrid,
+  .dndQuickStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dndAttackHeader {
+    display: none;
+  }
+
+  .dndAttackRow {
+    padding: 10px;
+    border: 1px solid #9e6839;
+    border-radius: 8px;
+    grid-template-columns: 1fr 1fr 42px;
+  }
+
+  .dndAttackRow input:first-child,
+  .dndAttackRow input:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .dndCoins {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .activeEnemies {
